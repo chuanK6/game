@@ -1,0 +1,19 @@
+name = "game-web64639712467"
+main = "worker/src/index.ts"
+compatibility_date = "2026-08-31"
+
+[vars]
+APP_ENV = "production"
+ALLOWED_ORIGIN = "https://game-web64639712467.klt338989.workers.dev"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "youlun-db"
+database_id = "afeb025c-c5a7-4edf-ad23-5c3682e42551"
+migrations_dir = "worker/migrations"

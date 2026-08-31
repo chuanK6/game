@@ -14,8 +14,8 @@ npm run dev
 API 和本地 D1：
 
 ```bash
-npx wrangler d1 migrations apply youlun-db --local --config worker/wrangler.toml
-npx wrangler d1 execute youlun-db --local --file worker/seeds/development.sql --config worker/wrangler.toml
+npx wrangler d1 migrations apply youlun-db --local --config wrangler.toml
+npx wrangler d1 execute youlun-db --local --file worker/seeds/development.sql --config wrangler.toml
 npm run dev:api
 ```
 
@@ -31,4 +31,4 @@ API 默认运行在 `http://127.0.0.1:8787`，Vite 会将 `/api` 请求代理至
 
 - 不要提交 `.env`、`.dev.vars`、Cloudflare 凭据或 Cloudinary API Secret。
 - 真实下载地址只能由鉴权后的独立 API 返回，不得加入公开游戏详情响应。
-- `worker/wrangler.toml` 中的 D1 `database_id` 是占位值，部署前需要替换。
+- `wrangler.toml` 配置单个 Worker 同时托管 Vue 静态资源和 `/api` 接口。

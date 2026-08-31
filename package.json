@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "wrangler dev --config worker/wrangler.toml",
+    "dev:api": "wrangler dev --config wrangler.toml",
     "build": "vue-tsc -b && tsc -p worker/tsconfig.json --noEmit && vite build",
     "typecheck": "vue-tsc -b",
     "typecheck:api": "tsc -p worker/tsconfig.json --noEmit",
     "test:e2e": "playwright test",
-    "deploy:api": "wrangler deploy --config worker/wrangler.toml"
+    "deploy": "npm run build && wrangler deploy --config wrangler.toml"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.2",
