@@ -13,8 +13,8 @@ defineProps<{ game: Game }>()
     </div>
     <div class="game-card-body">
       <div class="game-meta-top">
-        <span class="category-label">{{ game.category }}</span>
-        <span v-for="tag in game.tags.slice(0, 2)" :key="tag" class="tag-label">{{ tag }}</span>
+        <span class="category-label">{{ game.category.name }}</span>
+        <span v-for="tag in game.tags.slice(0, 2)" :key="tag.slug" class="tag-label">{{ tag.name }}</span>
       </div>
       <h3>{{ game.name }}</h3>
       <div class="game-date"><CalendarDays :size="15" />{{ game.publishAt }}</div>

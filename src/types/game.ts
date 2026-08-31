@@ -1,5 +1,11 @@
 export type ResourceType = 'free' | 'member'
 
+export interface Taxonomy {
+  id?: number
+  name: string
+  slug: string
+}
+
 export interface DownloadSource {
   provider: string
   label: string
@@ -11,11 +17,11 @@ export interface Game {
   slug: string
   name: string
   cover: string
-  category: string
-  tags: string[]
+  category: Taxonomy
+  tags: Taxonomy[]
   description: string
   minConfig: string[]
   resourceType: ResourceType
+  resourceStatus: 'available' | 'checking' | 'unavailable'
   publishAt: string
-  downloads: DownloadSource[]
 }

@@ -31,6 +31,7 @@ function closeMenu() {
         <RouterLink to="/" @click="closeMenu">首页</RouterLink>
         <RouterLink to="/games" @click="closeMenu">全部游戏</RouterLink>
         <RouterLink to="/feedback" @click="closeMenu">留言板</RouterLink>
+        <RouterLink v-if="auth.isAdmin" to="/admin" @click="closeMenu">管理后台</RouterLink>
       </nav>
 
       <div class="header-actions">

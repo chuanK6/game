@@ -1,47 +1,96 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next'
-import { ElCheckbox, ElCheckboxGroup } from 'element-plus'
+import { ElCheckbox, ElCheckboxGroup, ElPagination } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
-import { categories, games, tags } from '@/data/games'
+import { catalogApi, getGames } from '@/api/client'
+import type { Game, Taxonomy } from '@/types/game'
 
 const route = useRoute()
 const router = useRouter()
-const keyword = ref(String(route.query.q ?? ''))
-const category = ref(String(route.query.category ?? '全部'))
-const selectedTags = ref<string[]>(route.query.tags ? String(route.query.tags).split(',') : [])
+const keyword = ref('')
+const category = ref('')
+const selectedTags = ref<string[]>([])
+const currentPage = ref(1)
+const categories = ref<Taxonomy[]>([])
+const tags = ref<Taxonomy[]>([])
+const games = ref<Game[]>([])
+const total = ref(0)
+const loading = ref(true)
+const loadError = ref('')
+let searchTimer: number | undefined
 
-const results = computed(() => games.filter((game) => {
-  const q = keyword.value.trim().toLowerCase()
-  const keywordMatch = !q || [game.name, game.category, game.description, ...game.tags].some((item) => item.toLowerCase().includes(q))
-  const categoryMatch = category.value === '全部' || game.category === category.value
-  const tagsMatch = selectedTags.value.length === 0 || selectedTags.value.every((tag) => game.tags.includes(tag))
-  return keywordMatch && categoryMatch && tagsMatch
-}))
+Promise.all([catalogApi.categories(), catalogApi.tags()])
+  .then(([categoryItems, tagItems]) => {
+    categories.value = categoryItems
+    tags.value = tagItems
+  })
+  .catch(() => { loadError.value = '筛选项加载失败，请刷新重试。' })
 
-function syncQuery() {
-  router.replace({
+watch(() => route.query, async (query) => {
+  keyword.value = String(query.q ?? '')
+  category.value = String(query.category ?? '')
+  selectedTags.value = query.tags ? String(query.tags).split(',').filter(Boolean) : []
+  currentPage.value = Math.max(1, Number(query.page ?? 1) || 1)
+  await loadGames()
+}, { immediate: true })
+
+function updateQuery(page = 1) {
+  return router.replace({
     query: {
       ...(keyword.value.trim() ? { q: keyword.value.trim() } : {}),
-      ...(category.value !== '全部' ? { category: category.value } : {}),
+      ...(category.value ? { category: category.value } : {}),
       ...(selectedTags.value.length ? { tags: selectedTags.value.join(',') } : {}),
+      ...(page > 1 ? { page: String(page) } : {}),
     },
   })
 }
 
-function reset() {
-  keyword.value = ''
-  category.value = '全部'
-  selectedTags.value = []
+function scheduleSearch() {
+  window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => { void updateQuery() }, 350)
 }
 
-watch([keyword, category, selectedTags], syncQuery, { deep: true })
-watch(() => route.query, (query) => {
-  keyword.value = String(query.q ?? '')
-  category.value = String(query.category ?? '全部')
-  selectedTags.value = query.tags ? String(query.tags).split(',') : []
-})
+function selectCategory(slug: string) {
+  category.value = slug
+  void updateQuery()
+}
+
+function applyTags() {
+  void updateQuery()
+}
+
+function reset() {
+  keyword.value = ''
+  category.value = ''
+  selectedTags.value = []
+  void updateQuery()
+}
+
+async function loadGames() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const result = await getGames({
+      q: keyword.value,
+      category: category.value,
+      tags: selectedTags.value.join(','),
+      page: currentPage.value,
+      pageSize: 12,
+    })
+    games.value = result.games
+    total.value = result.pagination.total
+  } catch {
+    games.value = []
+    total.value = 0
+    loadError.value = '游戏列表加载失败，请稍后重试。'
+  } finally {
+    loading.value = false
+  }
+}
+
+onBeforeUnmount(() => window.clearTimeout(searchTimer))
 </script>
 
 <template>
@@ -59,18 +108,19 @@ watch(() => route.query, (query) => {
         <div class="filter-title"><SlidersHorizontal :size="19" />筛选</div>
         <div class="filter-group">
           <label>关键词</label>
-          <div class="filter-search"><Search :size="17" /><input v-model="keyword" placeholder="游戏名称或关键词" /></div>
+          <div class="filter-search"><Search :size="17" /><input v-model="keyword" placeholder="游戏名称或关键词" @input="scheduleSearch" @keyup.enter="updateQuery()" /></div>
         </div>
         <div class="filter-group">
           <label>分类</label>
           <div class="option-list">
-            <button v-for="item in categories" :key="item" :class="{ active: category === item }" @click="category = item">{{ item }}</button>
+            <button :class="{ active: !category }" @click="selectCategory('')">全部</button>
+            <button v-for="item in categories" :key="item.slug" :class="{ active: category === item.slug }" @click="selectCategory(item.slug)">{{ item.name }}</button>
           </div>
         </div>
         <div class="filter-group">
           <label>标签</label>
-          <el-checkbox-group v-model="selectedTags" class="tag-checks">
-            <el-checkbox v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</el-checkbox>
+          <el-checkbox-group v-model="selectedTags" class="tag-checks" @change="applyTags">
+            <el-checkbox v-for="tag in tags" :key="tag.slug" :value="tag.slug">{{ tag.name }}</el-checkbox>
           </el-checkbox-group>
         </div>
         <button class="reset-button" @click="reset"><RotateCcw :size="16" />重置筛选</button>
@@ -78,12 +128,29 @@ watch(() => route.query, (query) => {
 
       <div class="results-area">
         <div class="results-header">
-          <div><strong>{{ results.length }}</strong> 个结果</div>
+          <div><strong>{{ total }}</strong> 个结果</div>
           <span>按最近更新排序</span>
         </div>
-        <div v-if="results.length" class="game-grid three-cols">
-          <GameCard v-for="game in results" :key="game.id" :game="game" />
+        <div v-if="loading" class="empty-state"><p>正在加载游戏...</p></div>
+        <div v-else-if="loadError" class="empty-state">
+          <Search :size="32" /><h2>加载失败</h2><p>{{ loadError }}</p>
+          <button class="button button-secondary" @click="loadGames">重新加载</button>
         </div>
+        <template v-else-if="games.length">
+          <div class="game-grid three-cols">
+            <GameCard v-for="game in games" :key="game.id" :game="game" />
+          </div>
+          <el-pagination
+            v-if="total > 12"
+            class="results-pagination"
+            background
+            layout="prev, pager, next"
+            :current-page="currentPage"
+            :page-size="12"
+            :total="total"
+            @current-change="updateQuery"
+          />
+        </template>
         <div v-else class="empty-state">
           <Search :size="32" />
           <h2>没有找到相关游戏</h2>

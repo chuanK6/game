@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "wrangler dev --config wrangler.toml",
+    "db:migrate:local": "wrangler d1 migrations apply youlun-db --local --config wrangler.toml",
+    "db:seed:local": "wrangler d1 execute youlun-db --local --file worker/seeds/development.sql --config wrangler.toml",
+    "db:migrate:remote": "wrangler d1 migrations apply youlun-db --remote --config wrangler.toml",
     "build": "vue-tsc -b && tsc -p worker/tsconfig.json --noEmit && vite build",
     "typecheck": "vue-tsc -b",
     "typecheck:api": "tsc -p worker/tsconfig.json --noEmit",
