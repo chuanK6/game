@@ -63,10 +63,11 @@ h1, h2, h3 { letter-spacing: 0; }
 .menu-button { display: none; }
 
 .home-hero { position: relative; min-height: 510px; background-position: center; background-size: cover; color: #fff; isolation: isolate; overflow: hidden; }
-.hero-zoom-layer { position: absolute; inset: -3%; z-index: -2; background-position: center; background-size: cover; transform-origin: center; }
-.hero-zoom-enter-active, .hero-zoom-leave-active { transition: opacity .85s ease, transform 1.8s cubic-bezier(.2,.65,.25,1); }
-.hero-zoom-enter-from { opacity: .2; transform: scale(1.14); }
-.hero-zoom-leave-to { opacity: 0; transform: scale(1.02); }
+.hero-zoom-layer { position: absolute; inset: -12%; z-index: -2; background-position: center; background-size: cover; transform-origin: center; animation: hero-kenburns 7.2s cubic-bezier(.2,.65,.25,1) both; will-change: transform; }
+.hero-zoom-enter-active, .hero-zoom-leave-active { transition: opacity .9s ease; }
+.hero-zoom-enter-from { opacity: .1; }
+.hero-zoom-leave-to { opacity: 0; }
+@keyframes hero-kenburns { from { transform: scale(1); } to { transform: scale(1.12); } }
 .hero-shade { position: absolute; inset: 0; z-index: -1; background: rgba(4, 18, 30, .55); }
 .hero-content { position: relative; z-index: 1; min-height: 510px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding-bottom: 24px; }
 .hero-kicker { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; color: #9ce7ff; font-weight: 750; font-size: 14px; }
@@ -80,9 +81,9 @@ h1, h2, h3 { letter-spacing: 0; }
 .hero-dots { position: absolute; left: 50%; bottom: 22px; display: flex; gap: 7px; transform: translateX(-50%); }
 .hero-dots button { width: 24px; height: 4px; border: 0; border-radius: 2px; padding: 0; background: rgba(255,255,255,.42); }
 .hero-dots button.active { background: #fff; }
-.page-enter-active, .page-leave-active { transition: opacity .28s ease, transform .28s ease; }
-.page-enter-from { opacity: 0; transform: translateY(10px); }
-.page-leave-to { opacity: 0; transform: translateY(-6px); }
+.page-enter-active, .page-leave-active { transition: opacity .46s ease, transform .46s cubic-bezier(.2,.65,.25,1); }
+.page-enter-from { opacity: 0; transform: translateY(18px); }
+.page-leave-to { opacity: 0; transform: translateY(-10px); }
 .category-strip { background: #fff; border-bottom: 1px solid var(--line); }
 .category-strip-inner { min-height: 66px; display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none; }
 .strip-label { margin-right: 12px; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
@@ -98,8 +99,8 @@ h1, h2, h3 { letter-spacing: 0; }
 .game-card { min-width: 0; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 7px; transition: transform .2s, border-color .2s, box-shadow .2s; }
 .game-card:hover { transform: translateY(-4px); border-color: #a9d6e9; box-shadow: 0 12px 30px rgba(18,45,61,.1); }
 .game-cover-wrap { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #dfe7ec; }
-.game-cover { width: 100%; height: 100%; object-fit: cover; transition: transform .35s; }
-.game-card:hover .game-cover { transform: scale(1.035); }
+.game-cover { width: 100%; height: 100%; object-fit: cover; transition: transform .55s cubic-bezier(.2,.65,.25,1); }
+.game-card:hover .game-cover { transform: scale(1.08); }
 .resource-badge { position: absolute; right: 10px; top: 10px; border-radius: 4px; padding: 5px 8px; color: #fff; font-size: 12px; font-weight: 800; }
 .resource-badge.free { background: var(--green); }
 .resource-badge.member { background: #76540b; color: #fff4cb; }
@@ -493,5 +494,5 @@ h1, h2, h3 { letter-spacing: 0; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-  .hero-zoom-enter-active, .hero-zoom-leave-active, .page-enter-active, .page-leave-active { transition: none !important; }
+  .hero-zoom-enter-active, .hero-zoom-leave-active, .page-enter-active, .page-leave-active { transition: none !important; animation: none !important; }
 }

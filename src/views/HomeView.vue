@@ -15,6 +15,7 @@ const loading = ref(true)
 const loadError = ref('')
 const heroImages = ['/assets/hero/hero-1.webp', '/assets/hero/hero-2.webp', '/assets/hero/hero-3.webp', '/assets/hero/hero-4.webp']
 let timer: number | undefined
+const HERO_INTERVAL = 7200
 
 function submitSearch() {
   const q = keyword.value.trim()
@@ -42,7 +43,7 @@ async function loadHome() {
 onMounted(() => {
   void loadHome()
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    timer = window.setInterval(() => { activeHero.value = (activeHero.value + 1) % heroImages.length }, 6500)
+    timer = window.setInterval(() => { activeHero.value = (activeHero.value + 1) % heroImages.length }, HERO_INTERVAL)
   }
 })
 
