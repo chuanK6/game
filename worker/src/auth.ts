@@ -4,7 +4,9 @@ import type { AppEnv, AuthUser } from './types'
 
 const COOKIE_NAME = 'youlun_session'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7
-const PASSWORD_ITERATIONS = 210_000
+// Cloudflare Workers' free CPU budget is tight around password derivation.
+// Keep a meaningful work factor while leaving room for the D1/session writes.
+const PASSWORD_ITERATIONS = 50_000
 
 type UserSessionRow = {
   id: number
@@ -27,7 +29,7 @@ export async function verifyPassword(password: string, encoded: string) {
   const [algorithm, iterationsText, saltText, hashText] = encoded.split('$')
   if (algorithm !== 'pbkdf2-sha256' || !iterationsText || !saltText || !hashText) return false
   const iterations = Number(iterationsText)
-  if (!Number.isInteger(iterations) || iterations < 100_000 || iterations > 1_000_000) return false
+  if (!Number.isInteger(iterations) || iterations < 50_000 || iterations > 1_000_000) return false
 
   const actual = await derivePassword(password, fromBase64Url(saltText), iterations)
   return constantTimeEqual(actual, fromBase64Url(hashText))
