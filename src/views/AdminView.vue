@@ -10,7 +10,17 @@ import type { DownloadSource } from '@/types/game'
 
 type Tab = 'overview' | 'games' | 'taxonomy' | 'orders' | 'feedback' | 'users'
 type TaxonomyKind = 'categories' | 'tags'
-type GameForm = GamePayload & { id?: number; minConfigText: string }
+const CONFIG_FIELDS = [
+  { key: 'os', label: '操作系统', placeholder: '例如 Windows 10 64 位' },
+  { key: 'cpu', label: '处理器（CPU）', placeholder: '例如 Intel Core i5-8400' },
+  { key: 'memory', label: '内存', placeholder: '例如 8 GB RAM' },
+  { key: 'gpu', label: '显卡', placeholder: '例如 GTX 1060 6 GB' },
+  { key: 'storage', label: '存储空间', placeholder: '例如需要 45 GB 可用空间' },
+  { key: 'other', label: '其他说明', placeholder: '例如需要支持 DirectX 12' },
+] as const
+type ConfigKey = typeof CONFIG_FIELDS[number]['key']
+type ConfigFields = Record<ConfigKey, string>
+type GameForm = GamePayload & { id?: number; minConfigFields: ConfigFields }
 type TaxonomyForm = TaxonomyPayload & { id?: number }
 
 const activeTab = ref<Tab>('overview')
@@ -118,10 +128,41 @@ async function deleteTaxonomy(kind: TaxonomyKind, item: AdminTaxonomy) {
 
 function emptyGameForm(): GameForm {
   return {
-    name: '', slug: '', coverUrl: '', description: '', minConfig: [], minConfigText: '', categoryId: 0,
+    name: '', slug: '', coverUrl: '', description: '', minConfig: [], minConfigFields: emptyConfigFields(), categoryId: 0,
     resourceType: 'free', resourceStatus: 'available', status: 'draft', publishAt: new Date().toISOString().slice(0, 10),
     tagIds: [], downloads: [],
   }
+}
+
+function emptyConfigFields(): ConfigFields {
+  return { os: '', cpu: '', memory: '', gpu: '', storage: '', other: '' }
+}
+
+function parseConfigFields(items: string[]): ConfigFields {
+  const fields = emptyConfigFields()
+  for (const item of items) {
+    const separator = item.search(/[:：]/)
+    if (separator < 0) {
+      fields.other = [fields.other, item].filter(Boolean).join('\n')
+      continue
+    }
+    const label = item.slice(0, separator).trim()
+    const value = item.slice(separator + 1).trim()
+    const key: ConfigKey = label.includes('操作系统') ? 'os'
+      : label.includes('处理器') || label.toLowerCase().includes('cpu') ? 'cpu'
+        : label.includes('内存') ? 'memory'
+          : label.includes('显卡') || label.toLowerCase().includes('gpu') ? 'gpu'
+            : label.includes('存储') || label.includes('硬盘') ? 'storage' : 'other'
+    fields[key] = [fields[key], value].filter(Boolean).join('\n')
+  }
+  return fields
+}
+
+function serializeConfigFields(fields: ConfigFields) {
+  return CONFIG_FIELDS.map((field) => {
+    const value = fields[field.key].trim()
+    return value ? `${field.label.replace('（CPU）', '')}：${value}` : ''
+  }).filter(Boolean)
 }
 
 function openNewGame() {
@@ -139,7 +180,7 @@ async function openEditGame(id: number) {
       coverUrl: item.cover_url,
       description: item.description,
       minConfig: JSON.parse(item.min_config) as string[],
-      minConfigText: (JSON.parse(item.min_config) as string[]).join('\n'),
+      minConfigFields: parseConfigFields(JSON.parse(item.min_config) as string[]),
       categoryId: item.category_id,
       resourceType: item.resource_type,
       resourceStatus: item.resource_status,
@@ -188,7 +229,7 @@ async function uploadCover(event: Event) {
 
 async function saveGame() {
   const value = gameForm.value
-  value.minConfig = value.minConfigText.split('\n').map((line) => line.trim()).filter(Boolean)
+  value.minConfig = serializeConfigFields(value.minConfigFields)
   if (!value.name || !value.slug || !value.coverUrl || !value.description || !value.categoryId || !value.minConfig.length) {
     ElMessage.error('请完整填写游戏名称、slug、封面、分类、介绍和最低配置')
     return
@@ -327,7 +368,7 @@ async function saveUser(user: AdminUser) {
       <label>发布状态<select v-model="gameForm.status"><option value="draft">草稿</option><option value="published">发布</option><option value="offline">下架</option></select></label>
       <label>发布日期<input v-model="gameForm.publishAt" type="date" /></label>
       <label class="wide">游戏介绍<textarea v-model="gameForm.description" rows="5" maxlength="5000" required></textarea></label>
-      <label class="wide">最低配置<textarea v-model="gameForm.minConfigText" rows="5" placeholder="每行一项" required></textarea></label>
+      <fieldset class="wide config-editor"><legend>最低配置</legend><label v-for="field in CONFIG_FIELDS" :key="field.key">{{ field.label }}<input v-model="gameForm.minConfigFields[field.key]" :placeholder="field.placeholder" maxlength="200" /></label><p>至少填写一项；每个字段可填写多行内容。</p></fieldset>
       <fieldset class="wide"><legend>标签</legend><label v-for="item in tags.filter((entry) => entry.status === 'active')" :key="item.id" class="tag-option"><input v-model="gameForm.tagIds" type="checkbox" :value="item.id" />{{ item.name }}</label></fieldset>
       <fieldset class="wide download-editor"><legend>下载地址</legend><div v-for="(item, index) in gameForm.downloads" :key="index" class="download-editor-row"><input v-model="item.provider" placeholder="网盘名称" /><input v-model="item.label" placeholder="资源说明" /><input v-model="item.url" type="url" placeholder="https://..." /><button type="button" class="icon-button" title="移除" @click="gameForm.downloads.splice(index, 1)"><Trash2 :size="17" /></button></div><button type="button" class="button button-secondary button-small" @click="addDownload"><Plus :size="16" />添加地址</button></fieldset>
     </form>
