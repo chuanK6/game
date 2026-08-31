@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MURI 图床</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f8fc;color:#172033;font-family:system-ui,-apple-system,"Microsoft YaHei",sans-serif}
+.wrap{max-width:920px;margin:40px auto;padding:0 16px}.head{text-align:center;margin-bottom:24px}.head h1{margin:0 0 8px}.head p{margin:0;color:#667085}
+.grid{display:grid;grid-template-columns:310px 1fr;gap:18px}.card{background:#fff;border:1px solid #e6eaf1;border-radius:18px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,.06)}
+h2{font-size:18px;margin:0 0 16px}.field{margin-bottom:13px}label{display:block;font-size:13px;font-weight:700;margin-bottom:6px;color:#475467}
+input,textarea{width:100%;padding:10px 11px;border:1px solid #d9dee8;border-radius:10px;outline:none;font-size:14px}
+.drop{border:2px dashed #cbd5e1;border-radius:15px;padding:28px 14px;text-align:center;background:#fafbff;cursor:pointer}.drop.drag{border-color:#6366f1;background:#f7f7ff}
+.drop strong{display:block;margin-bottom:6px}.drop span{font-size:12px;color:#8a94a6}
+#fileInput{display:none}.progress{height:8px;background:#edf0f5;border-radius:99px;overflow:hidden;margin-top:14px}.bar{height:100%;width:0;background:#4f46e5;transition:width .15s}
+.status{min-height:22px;margin-top:10px;font-size:13px;color:#667085}.ok{color:#16803c}.err{color:#b42318}.warn{color:#b54708}
+.preview{min-height:280px;border:1px dashed #cbd5e1;border-radius:14px;display:grid;place-items:center;background:#fafbfc;color:#98a2b3;overflow:hidden}.preview img{max-width:100%;max-height:360px;object-fit:contain}
+.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:12px}.meta div{background:#f8fafc;border-radius:10px;padding:9px}.meta small{display:block;color:#98a2b3;font-size:11px}.meta b{font-size:12px;word-break:break-word}
+.row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px}textarea{min-height:78px;resize:vertical;font-family:Consolas,monospace}.copy{border:0;border-radius:10px;padding:0 14px;background:#0f172a;color:#fff;font-weight:700;cursor:pointer}.copy:disabled{opacity:.45;cursor:not-allowed}
+.tip{font-size:12px;color:#667085;line-height:1.6;margin-top:12px}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.wrap{margin:22px auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="head"><h1>MURI 图床</h1><p>Cloudinary 浏览器直传 · 获取图片链接 · 直接用于 Markdown</p></div>
+<div class="grid">
+<section class="card">
+<h2>上传图片</h2>
+<div class="field"><label>Cloud Name</label><input id="cloudName" value="wmu4lce4"></div>
+<div class="field"><label>Unsigned Upload Preset</label><input id="preset" value="muri10086"></div>
+<div class="field"><label>上传目录（可选）</label><input id="folder" value="blog"></div>
+<div id="drop" class="drop"><strong>点击选择图片</strong><span>支持拖拽 · JPG / PNG / WebP / GIF · ≤ 10MB</span></div>
+<input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+<div class="progress"><div id="bar" class="bar"></div></div>
+<div id="status" class="status">等待上传…</div>
+<div class="tip">图片从浏览器直接上传到 Cloudinary，不经过你的服务器。不要把 API Secret 放进前端。</div>
+</section>
+
+<section class="card">
+<h2>上传结果</h2>
+<div id="preview" class="preview">上传成功后显示图片预览</div>
+<div class="meta">
+<div><small>文件名</small><b id="name">—</b></div>
+<div><small>格式</small><b id="format">—</b></div>
+<div><small>尺寸</small><b id="size">—</b></div>
+</div>
+<div class="row"><input id="url" readonly placeholder="Cloudinary secure_url"><button id="copyUrl" class="copy" disabled>复制</button></div>
+<div class="row"><textarea id="markdown" readonly placeholder="Markdown 图片语法"></textarea><button id="copyMd" class="copy" disabled>复制 MD</button></div>
+<div class="tip">Public ID：<span id="publicId">—</span></div>
+</section>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const drop=$("drop"), fileInput=$("fileInput"), bar=$("bar"), status=$("status"), preview=$("preview");
+
+function setStatus(t,c=""){status.textContent=t;status.className="status "+c}
+function reset(){
+  bar.style.width="0%"; preview.className="preview"; preview.textContent="上传成功后显示图片预览";
+  $("url").value="";$("markdown").value="";$("name").textContent="—";$("format").textContent="—";$("size").textContent="—";$("publicId").textContent="—";
+  $("copyUrl").disabled=true;$("copyMd").disabled=true;
+}
+function copyText(text,btn,label){
+  navigator.clipboard.writeText(text).then(()=>{btn.textContent="已复制";setTimeout(()=>btn.textContent=label,1200)})
+  .catch(()=>{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();btn.textContent="已复制";setTimeout(()=>btn.textContent=label,1200)})
+}
+function upload(file){
+  reset();
+  const cloud=$("cloudName").value.trim(), preset=$("preset").value.trim(), folder=$("folder").value.trim();
+  if(!cloud||!preset){setStatus("请填写 Cloud Name 和 Upload Preset。","err");return}
+  if(!["image/jpeg","image/png","image/webp","image/gif"].includes(file.type)){setStatus("只支持 JPG、PNG、WebP、GIF。","err");return}
+  if(file.size>10*1024*1024){setStatus("图片超过 10MB。","err");return}
+
+  const fd=new FormData();fd.append("file",file);fd.append("upload_preset",preset);if(folder)fd.append("folder",folder);
+  const url=`https://api.cloudinary.com/v1_1/${encodeURIComponent(cloud)}/image/upload`;
+  const xhr=new XMLHttpRequest();xhr.open("POST",url,true);
+
+  xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);bar.style.width=p+"%";setStatus("正在上传… "+p+"%","warn")}};
+  xhr.onload=()=>{
+    let data={};try{data=JSON.parse(xhr.responseText)}catch(e){}
+    if(xhr.status<200||xhr.status>=300){setStatus(data.error?.message||("上传失败（HTTP "+xhr.status+"）"),"err");return}
+    if(!data.secure_url){setStatus("上传成功，但没有返回 secure_url。","err");return}
+
+    bar.style.width="100%";setStatus("上传成功 ✓","ok");
+    preview.innerHTML="";preview.className="preview";
+    const img=document.createElement("img");img.src=data.secure_url;img.alt=data.original_filename||"image";preview.appendChild(img);
+    $("url").value=data.secure_url;
+    $("markdown").value=`![${data.original_filename||"image"}](${data.secure_url})`;
+    $("name").textContent=data.original_filename||"—";$("format").textContent=(data.format||"").toUpperCase()||"—";
+    $("size").textContent=data.width&&data.height?`${data.width} × ${data.height}`:"—";$("publicId").textContent=data.public_id||"—";
+    $("copyUrl").disabled=false;$("copyMd").disabled=false;
+  };
+  xhr.onerror=()=>setStatus("网络连接失败，请检查网络后重试。","err");
+  setStatus("正在连接 Cloudinary…","warn");xhr.send(fd);
+}
+drop.addEventListener("click",()=>fileInput.click());
+fileInput.addEventListener("change",()=>fileInput.files[0]&&upload(fileInput.files[0]));
+["dragenter","dragover"].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.add("drag")}));
+["dragleave","drop"].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.remove("drag")}));
+drop.addEventListener("drop",e=>{const f=e.dataTransfer.files[0];if(f)upload(f)});
+$("copyUrl").addEventListener("click",()=>copyText($("url").value,$("copyUrl"),"复制"));
+$("copyMd").addEventListener("click",()=>copyText($("markdown").value,$("copyMd"),"复制 MD"));
+</script>
+</body>
+</html>
