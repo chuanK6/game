@@ -50,7 +50,10 @@ onBeforeUnmount(() => window.clearInterval(timer))
 </script>
 
 <template>
-  <section class="home-hero" :style="{ backgroundImage: `url(${heroImages[activeHero]})` }">
+  <section class="home-hero">
+    <Transition name="hero-zoom" mode="out-in">
+      <div :key="activeHero" class="hero-zoom-layer" :style="{ backgroundImage: `url(${heroImages[activeHero]})` }" aria-hidden="true"></div>
+    </Transition>
     <div class="hero-shade" aria-hidden="true"></div>
     <div class="container hero-content">
       <div class="hero-kicker"><Sparkles :size="16" /> 每周更新 PC 游戏资源</div>

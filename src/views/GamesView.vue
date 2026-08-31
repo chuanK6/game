@@ -19,6 +19,7 @@ const games = ref<Game[]>([])
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')
+const PAGE_SIZE = 20
 let searchTimer: number | undefined
 
 Promise.all([catalogApi.categories(), catalogApi.tags()])
@@ -77,7 +78,7 @@ async function loadGames() {
       category: category.value,
       tags: selectedTags.value.join(','),
       page: currentPage.value,
-      pageSize: 12,
+      pageSize: PAGE_SIZE,
     })
     games.value = result.games
     total.value = result.pagination.total
@@ -141,12 +142,12 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
             <GameCard v-for="game in games" :key="game.id" :game="game" />
           </div>
           <el-pagination
-            v-if="total > 12"
+            v-if="total > PAGE_SIZE"
             class="results-pagination"
             background
             layout="prev, pager, next"
             :current-page="currentPage"
-            :page-size="12"
+            :page-size="PAGE_SIZE"
             :total="total"
             @current-change="updateQuery"
           />

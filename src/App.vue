@@ -6,7 +6,11 @@ import AppHeader from '@/components/AppHeader.vue'
   <div class="app-shell">
     <AppHeader />
     <main>
-      <RouterView />
+      <RouterView v-slot="{ Component, route }">
+        <Transition name="page">
+          <component :is="Component" :key="route.name" />
+        </Transition>
+      </RouterView>
     </main>
     <footer class="site-footer">
       <div class="container footer-inner">
