@@ -21,6 +21,10 @@ npm run dev:api
 
 API 默认运行在 `http://127.0.0.1:8787`，Vite 会将 `/api` 请求代理至该端口。
 
+## 部署
+
+`main` 分支已连接 Cloudflare Workers Builds。每次推送后，Cloudflare 执行 `npm run build`，再通过 `npx wrangler deploy` 发布统一 Worker；Vue 静态资源和 `/api` 共用同一域名。
+
 ## 当前阶段
 
 - 已完成 Vue 前台纵切和主要交互原型。
