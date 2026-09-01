@@ -194,7 +194,7 @@ const listQuerySchema = z.object({
   category: z.string().trim().max(60).optional().default(''),
   tags: z.string().trim().max(200).optional().default(''),
   page: z.coerce.number().int().min(1).optional().default(1),
-  pageSize: z.coerce.number().int().min(1).max(50).optional().default(20),
+  pageSize: z.coerce.number().int().min(1).max(20).optional().default(20),
 })
 
 app.get('/games', async (context) => {

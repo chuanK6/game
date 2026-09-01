@@ -15,6 +15,9 @@ test('首页、游戏库和详情页可用', async ({ page }, testInfo) => {
   await expect(page.locator('.game-card')).toHaveCount(4)
   await expect(page.locator('.hero-zoom-layer')).toHaveCSS('background-image', /hero-[1-4]\.webp/)
   await expect(page.locator('.hero-zoom-layer')).toHaveCSS('animation-name', 'hero-kenburns')
+  await expect(page.locator('.hero-zoom-layer')).toHaveCSS('animation-timing-function', 'linear')
+  await expect(page.locator('.hero-dots')).toHaveCount(0)
+  await expect(page.locator('.category-strip')).toHaveCount(0)
   await expectNoHorizontalOverflow(page)
   await page.screenshot({ path: `test-results/home-${testInfo.project.name}.png` })
 

@@ -3,18 +3,18 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, Search, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import GameCard from '@/components/GameCard.vue'
-import { catalogApi, getGames } from '@/api/client'
-import type { Game, Taxonomy } from '@/types/game'
+import { getGames } from '@/api/client'
+import type { Game } from '@/types/game'
 
 const router = useRouter()
 const keyword = ref('')
-const activeHero = ref(0)
-const categories = ref<Taxonomy[]>([])
+const heroImages = ['/assets/hero/hero-1.webp', '/assets/hero/hero-2.webp', '/assets/hero/hero-3.webp', '/assets/hero/hero-4.webp']
+const activeHero = ref(Math.floor(Math.random() * heroImages.length))
 const latestGames = ref<Game[]>([])
 const loading = ref(true)
 const loadError = ref('')
-const heroImages = ['/assets/hero/hero-1.webp', '/assets/hero/hero-2.webp', '/assets/hero/hero-3.webp', '/assets/hero/hero-4.webp']
 let timer: number | undefined
+let unmounted = false
 const HERO_INTERVAL = 7200
 
 function submitSearch() {
@@ -22,16 +22,11 @@ function submitSearch() {
   router.push({ name: 'games', query: q ? { q } : {} })
 }
 
-function browseCategory(category = '') {
-  router.push({ name: 'games', query: category ? { category } : {} })
-}
-
 async function loadHome() {
   loading.value = true
   loadError.value = ''
   try {
-    const [categoryItems, gameResult] = await Promise.all([catalogApi.categories(), getGames({ pageSize: 4 })])
-    categories.value = categoryItems
+    const gameResult = await getGames({ pageSize: 4 })
     latestGames.value = gameResult.games
   } catch {
     loadError.value = '内容加载失败，请稍后重试。'
@@ -43,16 +38,30 @@ async function loadHome() {
 onMounted(() => {
   void loadHome()
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    timer = window.setInterval(() => { activeHero.value = (activeHero.value + 1) % heroImages.length }, HERO_INTERVAL)
+    void preloadHeroImages().then(() => {
+      if (!unmounted) timer = window.setInterval(() => { activeHero.value = (activeHero.value + 1) % heroImages.length }, HERO_INTERVAL)
+    })
   }
 })
 
-onBeforeUnmount(() => window.clearInterval(timer))
+onBeforeUnmount(() => {
+  unmounted = true
+  window.clearInterval(timer)
+})
+
+function preloadHeroImages() {
+  return Promise.all(heroImages.map((src) => new Promise<void>((resolve) => {
+    const image = new Image()
+    image.onload = () => resolve()
+    image.onerror = () => resolve()
+    image.src = src
+  })))
+}
 </script>
 
 <template>
   <section class="home-hero">
-    <Transition name="hero-zoom" mode="out-in">
+    <Transition name="hero-zoom">
       <div :key="activeHero" class="hero-zoom-layer" :style="{ backgroundImage: `url(${heroImages[activeHero]})` }" aria-hidden="true"></div>
     </Transition>
     <div class="hero-shade" aria-hidden="true"></div>
@@ -69,17 +78,6 @@ onBeforeUnmount(() => window.clearInterval(timer))
         <span><ShieldCheck :size="17" /> 权限清晰</span>
         <span>资源状态持续维护</span>
       </div>
-    </div>
-    <div class="hero-dots" aria-label="背景图切换">
-      <button v-for="(_, index) in heroImages" :key="index" :class="{ active: activeHero === index }" :aria-label="`显示第 ${index + 1} 张背景图`" @click="activeHero = index"></button>
-    </div>
-  </section>
-
-  <section class="category-strip">
-    <div class="container category-strip-inner">
-      <span class="strip-label">快速发现</span>
-      <button @click="browseCategory()">全部</button>
-      <button v-for="category in categories" :key="category.slug" @click="browseCategory(category.slug)">{{ category.name }}</button>
     </div>
   </section>
 

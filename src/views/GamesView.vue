@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next'
 import { ElCheckbox, ElCheckboxGroup, ElPagination } from 'element-plus'
@@ -19,7 +19,10 @@ const games = ref<Game[]>([])
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')
-const PAGE_SIZE = 20
+const desktopPageSize = 20
+const mobilePageSize = 8
+const isMobile = ref(window.matchMedia('(max-width: 760px)').matches)
+const pageSize = computed(() => isMobile.value ? mobilePageSize : desktopPageSize)
 let searchTimer: number | undefined
 
 Promise.all([catalogApi.categories(), catalogApi.tags()])
@@ -36,6 +39,7 @@ watch(() => route.query, async (query) => {
   currentPage.value = Math.max(1, Number(query.page ?? 1) || 1)
   await loadGames()
 }, { immediate: true })
+watch(pageSize, () => { void loadGames() })
 
 function updateQuery(page = 1) {
   return router.replace({
@@ -78,7 +82,7 @@ async function loadGames() {
       category: category.value,
       tags: selectedTags.value.join(','),
       page: currentPage.value,
-      pageSize: PAGE_SIZE,
+      pageSize: pageSize.value,
     })
     games.value = result.games
     total.value = result.pagination.total
@@ -92,6 +96,12 @@ async function loadGames() {
 }
 
 onBeforeUnmount(() => window.clearTimeout(searchTimer))
+function updateViewport() { isMobile.value = window.matchMedia('(max-width: 760px)').matches }
+onMounted(() => {
+  updateViewport()
+  window.addEventListener('resize', updateViewport)
+})
+onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
 </script>
 
 <template>
@@ -142,12 +152,12 @@ onBeforeUnmount(() => window.clearTimeout(searchTimer))
             <GameCard v-for="game in games" :key="game.id" :game="game" />
           </div>
           <el-pagination
-            v-if="total > PAGE_SIZE"
+            v-if="total > pageSize"
             class="results-pagination"
             background
             layout="prev, pager, next"
             :current-page="currentPage"
-            :page-size="PAGE_SIZE"
+            :page-size="pageSize"
             :total="total"
             @current-change="updateQuery"
           />
