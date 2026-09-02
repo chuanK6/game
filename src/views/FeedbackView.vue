@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { Bug, Gamepad2, HelpCircle, MessageSquareText, Send } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { ApiError, feedbackApi, type FeedbackItem } from '@/api/client'
+import { formatDateTime } from '@/utils/date'
 
 const type = ref<FeedbackItem['type']>('add_game')
 const title = ref('')
@@ -69,7 +70,7 @@ async function submit() {
       <div v-else-if="!history.length" class="empty-state compact"><MessageSquareText :size="28" /><h3>暂无留言</h3></div>
       <div v-else class="history-list">
         <article v-for="item in history" :key="item.id" class="history-row">
-          <div><span class="history-type">{{ types.find((entry) => entry.value === item.type)?.label }}</span><h3>{{ item.title }}</h3><p>{{ item.content }}</p><small>{{ item.created_at }}</small></div>
+          <div><span class="history-type">{{ types.find((entry) => entry.value === item.type)?.label }}</span><h3>{{ item.title }}</h3><p>{{ item.content }}</p><small>{{ formatDateTime(item.created_at) }}</small></div>
           <div class="history-status"><strong>{{ statusLabels[item.status] }}</strong><p v-if="item.admin_reply">{{ item.admin_reply }}</p></div>
         </article>
       </div>

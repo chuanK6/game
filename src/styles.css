@@ -260,8 +260,12 @@ h1, h2, h3 { letter-spacing: 0; }
 .channel-switch { margin-bottom: 18px; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 5px; padding: 3px; }
 .channel-switch button { height: 36px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); }
 .channel-switch button.active { background: var(--blue); color: #fff; font-weight: 750; }
-.payment-body { display: grid; grid-template-columns: 190px 1fr; gap: 24px; align-items: center; }
-.payment-body img { width: 190px; height: 220px; object-fit: cover; object-position: center; border: 1px solid var(--line); }
+.payment-confirm-body { text-align: center; }
+.payment-confirm-body strong { display: block; color: var(--danger); font-size: 25px; line-height: 1.35; }
+.payment-confirm-body p { margin: 14px 0 10px; color: var(--muted); font-size: 14px; }
+.payment-confirm-body code { display: inline-block; padding: 8px 13px; border-radius: 4px; background: #fff0f1; color: var(--danger); font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
+.payment-body { display: grid; grid-template-columns: 240px 1fr; gap: 28px; align-items: center; }
+.payment-body img { width: 240px; height: 320px; object-fit: contain; object-position: center; border: 1px solid var(--line); background: #fff; }
 .payment-body > div { display: flex; flex-direction: column; align-items: flex-start; }
 .payment-body span { color: var(--muted); font-size: 13px; }
 .payment-body strong { margin: 2px 0 16px; font-size: 33px; }
@@ -496,8 +500,8 @@ h1, h2, h3 { letter-spacing: 0; }
   .profile-nav > button { grid-column: auto; min-width: 0; grid-template-columns: 18px minmax(0, 1fr); padding-inline: 6px; white-space: nowrap; }
   .profile-nav .logout-link { grid-column: 1 / -1; display: flex; justify-content: center; }
   .info-rows > div { grid-template-columns: 100px 1fr; }
-  .payment-body { grid-template-columns: 1fr; }
-  .payment-body img { margin-inline: auto; }
+  .payment-body { grid-template-columns: 1fr; gap: 20px; }
+  .payment-body img { width: min(100%, 300px); height: min(68vh, 420px); margin-inline: auto; }
   .payment-body > div { align-items: center; text-align: center; }
   .admin-sidebar { grid-template-columns: 1fr 1fr; }
   .admin-stats { grid-template-columns: 1fr 1fr; }

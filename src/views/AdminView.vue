@@ -7,6 +7,7 @@ import {
   type AdminTaxonomy, type AdminUser, type GamePayload, type TaxonomyPayload,
 } from '@/api/client'
 import type { DownloadSource } from '@/types/game'
+import { formatDateTime, formatDateTimeInput, shanghaiInputToIso } from '@/utils/date'
 
 type Tab = 'overview' | 'games' | 'taxonomy' | 'orders' | 'feedback' | 'users'
 type TaxonomyKind = 'categories' | 'tags'
@@ -68,7 +69,7 @@ async function loadTab(tab: Tab) {
     if (tab === 'feedback') feedback.value = await adminApi.feedback()
     if (tab === 'users') {
       users.value = await adminApi.users()
-      userExpiryValues.value = Object.fromEntries(users.value.map((user) => [user.id, user.member_expire_at?.replace(' ', 'T').slice(0, 16) ?? '']))
+      userExpiryValues.value = Object.fromEntries(users.value.map((user) => [user.id, formatDateTimeInput(user.member_expire_at)]))
     }
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '管理数据加载失败')
@@ -291,7 +292,8 @@ async function saveUser(user: AdminUser) {
   if (user.member_type === 'monthly') {
     const raw = userExpiryValues.value[user.id]
     if (!raw) { ElMessage.error('月度会员必须设置到期时间'); return }
-    memberExpireAt = new Date(raw).toISOString()
+    memberExpireAt = shanghaiInputToIso(raw)
+    if (!memberExpireAt) { ElMessage.error('到期时间格式无效'); return }
   }
   try {
     await adminApi.updateUser(user.id, { status: user.status, role: user.role, memberType: user.member_type, memberExpireAt })
@@ -341,16 +343,16 @@ async function saveUser(user: AdminUser) {
 
         <template v-else-if="activeTab === 'orders'">
           <div v-if="!orders.length" class="empty-state compact"><CheckCircle2 :size="28" /><h3>暂无会员工单</h3></div>
-          <div v-else class="admin-list"><article v-for="item in orders" :key="item.id" class="admin-list-row"><div><span class="history-type">#{{ item.id }} · {{ item.username }}</span><h3>{{ item.plan === 'monthly' ? '月度会员' : '终身会员' }} · {{ item.payment_channel === 'wechat' ? '微信' : '支付宝' }}</h3><p>{{ item.submitted_at }}</p><small v-if="item.admin_note">{{ item.admin_note }}</small></div><div class="row-actions"><span :class="['order-status', item.status]">{{ item.status }}</span><template v-if="item.status === 'pending'"><button class="approve" @click="reviewOrder(item, 'approved')">通过</button><button class="danger-text" @click="reviewOrder(item, 'rejected')">驳回</button></template></div></article></div>
+          <div v-else class="admin-list"><article v-for="item in orders" :key="item.id" class="admin-list-row"><div><span class="history-type">#{{ item.id }} · {{ item.username }}</span><h3>{{ item.plan === 'monthly' ? '月度会员' : '终身会员' }} · {{ item.payment_channel === 'wechat' ? '微信' : '支付宝' }}</h3><p>{{ formatDateTime(item.submitted_at) }}</p><small v-if="item.admin_note">{{ item.admin_note }}</small></div><div class="row-actions"><span :class="['order-status', item.status]">{{ item.status }}</span><template v-if="item.status === 'pending'"><button class="approve" @click="reviewOrder(item, 'approved')">通过</button><button class="danger-text" @click="reviewOrder(item, 'rejected')">驳回</button></template></div></article></div>
         </template>
 
         <template v-else-if="activeTab === 'feedback'">
           <div v-if="!feedback.length" class="empty-state compact"><MessageSquareText :size="28" /><h3>暂无反馈</h3></div>
-          <div v-else class="admin-list"><article v-for="item in feedback" :key="item.id" class="admin-list-row feedback-admin-row"><div><span class="history-type">{{ item.username }} · {{ item.type }}</span><h3>{{ item.title }}</h3><p>{{ item.content }}</p><small>{{ item.created_at }}</small></div><div class="admin-inline-form"><select v-model="item.status"><option value="pending">待处理</option><option value="processing">处理中</option><option value="resolved">已处理</option><option value="closed">已关闭</option></select><textarea v-model="item.admin_reply" placeholder="管理员回复" maxlength="500"></textarea><button class="button button-primary button-small" @click="saveFeedback(item)">保存</button></div></article></div>
+          <div v-else class="admin-list"><article v-for="item in feedback" :key="item.id" class="admin-list-row feedback-admin-row"><div><span class="history-type">{{ item.username }} · {{ item.type }}</span><h3>{{ item.title }}</h3><p>{{ item.content }}</p><small>{{ formatDateTime(item.created_at) }}</small></div><div class="admin-inline-form"><select v-model="item.status"><option value="pending">待处理</option><option value="processing">处理中</option><option value="resolved">已处理</option><option value="closed">已关闭</option></select><textarea v-model="item.admin_reply" placeholder="管理员回复" maxlength="500"></textarea><button class="button button-primary button-small" @click="saveFeedback(item)">保存</button></div></article></div>
         </template>
 
         <template v-else-if="activeTab === 'users'">
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>会员</th><th>到期时间</th><th>操作</th></tr></thead><tbody><tr v-for="item in users" :key="item.id"><td><strong>{{ item.username }}</strong><small class="table-subline">{{ item.created_at }}</small></td><td><select v-model="item.role"><option value="user">用户</option><option value="admin">管理员</option></select></td><td><select v-model="item.status"><option value="active">启用</option><option value="disabled">禁用</option></select></td><td><select v-model="item.member_type"><option value="none">普通</option><option value="monthly">月度</option><option value="lifetime">终身</option></select></td><td><input v-if="item.member_type === 'monthly'" v-model="userExpiryValues[item.id]" type="datetime-local" /><span v-else>-</span></td><td><button class="button button-secondary button-small" @click="saveUser(item)">保存</button></td></tr></tbody></table></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>会员</th><th>到期时间</th><th>操作</th></tr></thead><tbody><tr v-for="item in users" :key="item.id"><td><strong>{{ item.username }}</strong><small class="table-subline">{{ formatDateTime(item.created_at) }}</small></td><td><select v-model="item.role"><option value="user">用户</option><option value="admin">管理员</option></select></td><td><select v-model="item.status"><option value="active">启用</option><option value="disabled">禁用</option></select></td><td><select v-model="item.member_type"><option value="none">普通</option><option value="monthly">月度</option><option value="lifetime">终身</option></select></td><td><input v-if="item.member_type === 'monthly'" v-model="userExpiryValues[item.id]" type="datetime-local" /><span v-else>-</span></td><td><button class="button button-secondary button-small" @click="saveUser(item)">保存</button></td></tr></tbody></table></div>
         </template>
       </main>
     </div>

@@ -44,8 +44,12 @@ test('注册、会话恢复和会员工单流程可用', async ({ page }) => {
   await page.goto('/profile?tab=membership')
   await expect(page.getByRole('heading', { name: '会员中心' })).toBeVisible()
   await page.locator('.plan-card.featured .button').click()
-  await expect(page.getByRole('dialog')).toContainText('开通终身会员')
+  await expect(page.getByRole('dialog')).toContainText('付款记得备注用户名')
   await expect(page.getByRole('dialog').getByText(username)).toBeVisible()
+  await page.getByRole('button', { name: '我已记住，继续付款' }).click()
+  const paymentDialog = page.getByRole('dialog', { name: '开通终身会员', exact: true })
+  await expect(paymentDialog).toBeVisible()
+  await expect(paymentDialog.getByText(username)).toBeVisible()
   await page.getByRole('button', { name: '我已付款，提交工单' }).click()
   await expect(page.getByText('终身会员开通申请')).toBeVisible()
 

@@ -5,12 +5,14 @@ import { Check, ChevronRight, Clock3, Crown, LogOut, ReceiptText, ShieldCheck, U
 import { ElButton, ElDialog, ElMessage } from 'element-plus'
 import { ApiError, authApi, membershipApi, type MembershipOrder } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { formatDateTime } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const activeTab = ref(String(route.query.tab ?? 'account'))
 const paymentOpen = ref(false)
+const paymentConfirmOpen = ref(false)
 const selectedPlan = ref<'monthly' | 'lifetime'>('monthly')
 const selectedChannel = ref<'wechat' | 'alipay'>('wechat')
 const submittingOrder = ref(false)
@@ -26,7 +28,7 @@ const plans = {
 const paymentImage = computed(() => `/assets/payment/${selectedChannel.value}-${selectedPlan.value}.jpg`)
 const memberStatus = computed(() => {
   if (auth.user?.memberType === 'lifetime') return '终身会员'
-  if (auth.user?.memberType === 'monthly') return `有效至 ${auth.user.memberExpireAt ?? '-'}`
+  if (auth.user?.memberType === 'monthly') return `有效至 ${formatDateTime(auth.user.memberExpireAt)}`
   return '普通用户'
 })
 const orderStatusLabels: Record<MembershipOrder['status'], string> = { pending: '待审核', approved: '已开通', rejected: '已驳回' }
@@ -42,6 +44,11 @@ function setTab(tab: string) {
 function openPayment(plan: 'monthly' | 'lifetime') {
   selectedPlan.value = plan
   selectedChannel.value = 'wechat'
+  paymentConfirmOpen.value = true
+}
+
+function confirmPaymentPlan() {
+  paymentConfirmOpen.value = false
   paymentOpen.value = true
 }
 
@@ -138,7 +145,7 @@ async function logout() {
           <div class="content-title"><h2>我的工单</h2><p>查看会员开通申请的审核进度。</p></div>
           <div v-if="ordersLoading" class="empty-state compact"><p>正在加载工单...</p></div>
           <div v-else-if="orders.length" class="order-list">
-            <div v-for="order in orders" :key="order.id" class="order-row"><div class="order-icon"><Clock3 :size="20" /></div><div><strong>{{ plans[order.plan].name }}开通申请</strong><span>{{ order.submitted_at }} · {{ order.payment_channel === 'wechat' ? '微信支付' : '支付宝' }}</span><small v-if="order.admin_note">{{ order.admin_note }}</small></div><span :class="['order-status', order.status]">{{ orderStatusLabels[order.status] }}</span></div>
+            <div v-for="order in orders" :key="order.id" class="order-row"><div class="order-icon"><Clock3 :size="20" /></div><div><strong>{{ plans[order.plan].name }}开通申请</strong><span>{{ formatDateTime(order.submitted_at) }} · {{ order.payment_channel === 'wechat' ? '微信支付' : '支付宝' }}</span><small v-if="order.admin_note">{{ order.admin_note }}</small></div><span :class="['order-status', order.status]">{{ orderStatusLabels[order.status] }}</span></div>
           </div>
           <div v-else class="empty-state compact"><ReceiptText :size="30" /><h3>暂无工单</h3><p>提交会员开通申请后，可在这里查看进度。</p></div>
         </template>
@@ -146,7 +153,16 @@ async function logout() {
     </div>
   </section>
 
-  <el-dialog v-model="paymentOpen" :title="`开通${plans[selectedPlan].name}`" width="min(520px, 94vw)" class="payment-dialog">
+  <el-dialog v-model="paymentConfirmOpen" :title="`确认开通${plans[selectedPlan].name}`" width="min(460px, 94vw)" class="payment-confirm-dialog">
+    <div class="payment-confirm-body">
+      <strong>付款记得备注用户名</strong>
+      <p>请在付款备注中填写以下用户名，方便管理员核对到账信息：</p>
+      <code>{{ auth.user?.username }}</code>
+    </div>
+    <template #footer><el-button @click="paymentConfirmOpen = false">取消</el-button><el-button type="primary" @click="confirmPaymentPlan">我已记住，继续付款</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="paymentOpen" :title="`开通${plans[selectedPlan].name}`" width="min(620px, 96vw)" class="payment-dialog">
     <div class="channel-switch"><button :class="{ active: selectedChannel === 'wechat' }" @click="selectedChannel = 'wechat'">微信支付</button><button :class="{ active: selectedChannel === 'alipay' }" @click="selectedChannel = 'alipay'">支付宝</button></div>
     <div class="payment-body"><img :src="paymentImage" :alt="`${plans[selectedPlan].name}${selectedChannel === 'wechat' ? '微信' : '支付宝'}收款码`" /><div><span>应付金额</span><strong>¥{{ plans[selectedPlan].price }}</strong><p>付款时请务必备注用户名：</p><code>{{ auth.user?.username }}</code></div></div>
     <div class="payment-notice">付款完成后提交工单，管理员核对到账信息后开通会员。</div>
