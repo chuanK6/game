@@ -26,7 +26,7 @@
 - `src/api/client.ts`：前端所有 API 类型与调用入口；接口契约变化需同步修改。
 - `src/stores/auth.ts`：会话恢复、登录、注册、退出及会员/管理员派生状态。
 - `src/views/HomeView.vue`、`GamesView.vue`、`ProfileView.vue`：首页轮播、游戏分页筛选、个人中心与会员工单的主要实现。
-- `src/views/AdminView.vue`：完整管理后台；游戏最低配置在界面中使用固定字段，保存时仍序列化为字符串数组。
+- `src/views/AdminView.vue`：完整管理后台；概览卡片可跳转到对应模块，游戏最低配置在界面中使用固定字段，保存时仍序列化为字符串数组；游戏、工单、反馈和用户列表支持搜索/删除。
 - `src/styles.css`：全站样式、动画和所有响应式规则，调整手机布局应先检查对应媒体查询。
 - `worker/src/index.ts`：公开 API、认证入口、反馈、会员工单、下载权限和全局中间件。
 - `worker/src/admin.ts`：管理员专用 API；涉及后台 CRUD、审核或用户权限时优先查看。
@@ -35,7 +35,7 @@
 
 # 5. 数据 / API
 
-业务数据存于 Cloudflare D1。完整表结构在 `worker/migrations/0001_initial.sql`，登录限流表在 `0002_auth_attempts.sql`；主要表包括用户、会话、游戏、下载链接、分类、标签、反馈和会员工单。API 均位于 `/api`，由 `worker/src/index.ts` 和 `admin.ts` 提供；前端通过 `src/api/client.ts` 使用 Cookie 同域通信。公开游戏接口不会返回真实下载 URL，下载地址只能通过鉴权接口取得。
+业务数据存于 Cloudflare D1。完整表结构在 `worker/migrations/0001_initial.sql`，登录限流表在 `0002_auth_attempts.sql`；主要表包括用户、会话、游戏、下载链接、分类、标签、反馈和会员工单。API 均位于 `/api`，由 `worker/src/index.ts` 和 `admin.ts` 提供；管理员列表接口使用 `q` 参数搜索，提供游戏、工单、反馈和用户删除接口。前端通过 `src/api/client.ts` 使用 Cookie 同域通信。公开游戏接口不会返回真实下载 URL，下载地址只能通过鉴权接口取得。
 
 重要配置包括 Worker 的 `DB`、`ASSETS`、`APP_ENV`、`ALLOWED_ORIGIN`，以及前端可选的 `VITE_API_BASE_URL`、`VITE_SUPPORT_EMAIL`。不得在文档或代码中记录真实密钥。
 

@@ -26,7 +26,7 @@ async function loadHome() {
   loading.value = true
   loadError.value = ''
   try {
-    const gameResult = await getGames({ pageSize: 4 })
+    const gameResult = await getGames({ pageSize: 12 })
     latestGames.value = gameResult.games
   } catch {
     loadError.value = '内容加载失败，请稍后重试。'

@@ -84,14 +84,29 @@ admin.patch('/users/:id', async (context) => {
   return context.json({ ok: true, data: null })
 })
 
+admin.delete('/users/:id', async (context) => {
+  const userId = Number(context.req.param('id'))
+  if (!Number.isInteger(userId)) return fail(context, 400, 'INVALID_USER', '用户 ID 无效。')
+  if (userId === context.get('user').id) return fail(context, 409, 'CANNOT_DELETE_SELF', '不能删除当前管理员账号。')
+  const result = await context.env.DB.prepare(`
+    UPDATE users SET status = 'disabled', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND deleted_at IS NULL
+  `).bind(userId).run()
+  if (!result.meta.changes) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
+  await context.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run()
+  return context.json({ ok: true, data: null })
+})
+
 admin.get('/orders', async (context) => {
-  const status = String(context.req.query('status') ?? '')
+  const status = String(context.req.query('status') ?? '').trim()
+  const q = String(context.req.query('q') ?? '').trim()
   const result = await context.env.DB.prepare(`
     SELECT o.id, o.plan, o.payment_channel, o.status, o.user_note, o.admin_note,
            o.submitted_at, o.reviewed_at, u.id AS user_id, u.username
     FROM membership_orders o JOIN users u ON u.id = o.user_id
-    WHERE (? = '' OR o.status = ?) ORDER BY o.submitted_at DESC, o.id DESC LIMIT 200
-  `).bind(status, status).all()
+    WHERE (? = '' OR o.status = ?) AND (? = '' OR u.username LIKE ?)
+    ORDER BY o.submitted_at DESC, o.id DESC LIMIT 200
+  `).bind(status, status, q, `%${q}%`).all()
   return context.json({ ok: true, data: result.results })
 })
 
@@ -133,14 +148,24 @@ admin.patch('/orders/:id', async (context) => {
   return context.json({ ok: true, data: null })
 })
 
+admin.delete('/orders/:id', async (context) => {
+  const orderId = Number(context.req.param('id'))
+  if (!Number.isInteger(orderId)) return fail(context, 400, 'INVALID_ORDER', '工单 ID 无效。')
+  const result = await context.env.DB.prepare('DELETE FROM membership_orders WHERE id = ?').bind(orderId).run()
+  if (!result.meta.changes) return fail(context, 404, 'ORDER_NOT_FOUND', '工单不存在。')
+  return context.json({ ok: true, data: null })
+})
+
 admin.get('/feedback', async (context) => {
-  const status = String(context.req.query('status') ?? '')
+  const status = String(context.req.query('status') ?? '').trim()
+  const q = String(context.req.query('q') ?? '').trim()
   const result = await context.env.DB.prepare(`
     SELECT f.id, f.type, f.title, f.content, f.status, f.admin_reply, f.created_at, f.handled_at,
            u.username, g.name AS game_name
     FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN games g ON g.id = f.game_id
-    WHERE (? = '' OR f.status = ?) ORDER BY f.created_at DESC, f.id DESC LIMIT 200
-  `).bind(status, status).all()
+    WHERE (? = '' OR f.status = ?) AND (? = '' OR u.username LIKE ? OR f.title LIKE ? OR f.content LIKE ?)
+    ORDER BY f.created_at DESC, f.id DESC LIMIT 200
+  `).bind(status, status, q, `%${q}%`, `%${q}%`, `%${q}%`).all()
   return context.json({ ok: true, data: result.results })
 })
 
@@ -158,6 +183,14 @@ admin.patch('/feedback/:id', async (context) => {
       handled_at = CASE WHEN ? IN ('resolved', 'closed') THEN CURRENT_TIMESTAMP ELSE handled_at END
     WHERE id = ?
   `).bind(parsed.data.status, parsed.data.adminReply || null, context.get('user').id, parsed.data.status, feedbackId).run()
+  if (!result.meta.changes) return fail(context, 404, 'FEEDBACK_NOT_FOUND', '反馈不存在。')
+  return context.json({ ok: true, data: null })
+})
+
+admin.delete('/feedback/:id', async (context) => {
+  const feedbackId = Number(context.req.param('id'))
+  if (!Number.isInteger(feedbackId)) return fail(context, 400, 'INVALID_FEEDBACK', '反馈 ID 无效。')
+  const result = await context.env.DB.prepare('DELETE FROM feedback WHERE id = ?').bind(feedbackId).run()
   if (!result.meta.changes) return fail(context, 404, 'FEEDBACK_NOT_FOUND', '反馈不存在。')
   return context.json({ ok: true, data: null })
 })
@@ -181,11 +214,13 @@ const gameSchema = z.object({
 })
 
 admin.get('/games', async (context) => {
+  const q = String(context.req.query('q') ?? '').trim()
   const result = await context.env.DB.prepare(`
     SELECT g.id, g.name, g.slug, g.cover_url, g.resource_type, g.resource_status, g.status, g.publish_at,
            c.name AS category FROM games g JOIN categories c ON c.id = g.category_id
-    WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC, g.id DESC LIMIT 300
-  `).all()
+    WHERE g.deleted_at IS NULL AND (? = '' OR g.name LIKE ? OR g.slug LIKE ?)
+    ORDER BY g.created_at DESC, g.id DESC LIMIT 300
+  `).bind(q, `%${q}%`, `%${q}%`).all()
   return context.json({ ok: true, data: result.results })
 })
 
