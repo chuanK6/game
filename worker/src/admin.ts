@@ -34,7 +34,7 @@ admin.get('/users', async (context) => {
   const result = await context.env.DB.prepare(`
     SELECT id, username, avatar_url, role, status, member_type, member_started_at, member_expire_at, created_at
     FROM users WHERE deleted_at IS NULL AND (? = '' OR username LIKE ?)
-    ORDER BY created_at DESC, id DESC LIMIT 200
+    ORDER BY role = 'admin' DESC, created_at DESC, id DESC LIMIT 200
   `).bind(q, `%${q}%`).all()
   return context.json({ ok: true, data: result.results })
 })
@@ -213,15 +213,31 @@ const gameSchema = z.object({
   })).max(20),
 })
 
+const adminGamesQuerySchema = z.object({
+  q: z.string().trim().max(100).optional().default(''),
+  page: z.coerce.number().int().min(1).optional().default(1),
+})
+
 admin.get('/games', async (context) => {
-  const q = String(context.req.query('q') ?? '').trim()
+  const parsed = adminGamesQuerySchema.safeParse(context.req.query())
+  if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '分页参数无效。')
+  const { q, page } = parsed.data
+  const pageSize = 10
+  const offset = (page - 1) * pageSize
+  const filters = "g.deleted_at IS NULL AND (? = '' OR g.name LIKE ? OR g.slug LIKE ?)"
+  const bindings = [q, `%${q}%`, `%${q}%`]
+  const totalRow = await context.env.DB.prepare(`
+    SELECT COUNT(*) AS total FROM games g JOIN categories c ON c.id = g.category_id WHERE ${filters}
+  `).bind(...bindings).first<{ total: number }>()
   const result = await context.env.DB.prepare(`
     SELECT g.id, g.name, g.slug, g.cover_url, g.resource_type, g.resource_status, g.status, g.publish_at,
            c.name AS category FROM games g JOIN categories c ON c.id = g.category_id
-    WHERE g.deleted_at IS NULL AND (? = '' OR g.name LIKE ? OR g.slug LIKE ?)
-    ORDER BY g.created_at DESC, g.id DESC LIMIT 300
-  `).bind(q, `%${q}%`, `%${q}%`).all()
-  return context.json({ ok: true, data: result.results })
+    WHERE ${filters} ORDER BY g.created_at DESC, g.id DESC LIMIT ? OFFSET ?
+  `).bind(...bindings, pageSize, offset).all()
+  return context.json({ ok: true, data: {
+    games: result.results,
+    pagination: { page, pageSize, total: totalRow?.total ?? 0 },
+  } })
 })
 
 admin.get('/games/:id', async (context) => {

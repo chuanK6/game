@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next'
+import { ArrowUp, RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next'
 import { ElCheckbox, ElCheckboxGroup, ElPagination } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
 import { catalogApi, getGames } from '@/api/client'
@@ -71,6 +71,10 @@ function reset() {
   category.value = ''
   selectedTags.value = []
   void updateQuery()
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 async function loadGames() {
@@ -171,4 +175,5 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
       </div>
     </div>
   </section>
+  <button class="scroll-top-button" title="回到顶部" aria-label="回到顶部" @click="scrollToTop"><ArrowUp :size="20" /></button>
 </template>

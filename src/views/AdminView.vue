@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Upload, Users } from 'lucide-vue-next'
-import { ElButton, ElDialog, ElMessage } from 'element-plus'
+import { ElButton, ElDialog, ElMessage, ElPagination } from 'element-plus'
 import {
   ApiError, adminApi, type AdminFeedback, type AdminGame, type AdminOrder, type AdminOverview,
   type AdminTaxonomy, type AdminUser, type GamePayload, type TaxonomyPayload,
@@ -28,6 +28,9 @@ const activeTab = ref<Tab>('overview')
 const loading = ref(false)
 const overview = ref<AdminOverview>({ users: 0, games: 0, pendingOrders: 0, openFeedback: 0 })
 const games = ref<AdminGame[]>([])
+const gamePage = ref(1)
+const gameTotal = ref(0)
+const gamePageSize = 10
 const orders = ref<AdminOrder[]>([])
 const feedback = ref<AdminFeedback[]>([])
 const users = ref<AdminUser[]>([])
@@ -63,8 +66,9 @@ async function loadTab(tab: Tab) {
   try {
     if (tab === 'overview') overview.value = await adminApi.overview()
     if (tab === 'games') {
-      const [gameItems, categoryItems, tagItems] = await Promise.all([adminApi.games(gameSearch.value.trim()), adminApi.categories(), adminApi.tags()])
-      games.value = gameItems
+      const [gameResult, categoryItems, tagItems] = await Promise.all([adminApi.games(gameSearch.value.trim(), gamePage.value), adminApi.categories(), adminApi.tags()])
+      games.value = gameResult.games
+      gameTotal.value = gameResult.pagination.total
       categories.value = categoryItems
       tags.value = tagItems
     }
@@ -83,7 +87,13 @@ async function loadTab(tab: Tab) {
 }
 
 function searchTab(tab: Tab) {
+  if (tab === 'games') gamePage.value = 1
   void loadTab(tab)
+}
+
+function changeGamePage(page: number) {
+  gamePage.value = page
+  void loadTab('games')
 }
 
 async function deleteOrder(item: AdminOrder) {
@@ -368,7 +378,8 @@ async function saveUser(user: AdminUser) {
 
         <template v-else-if="activeTab === 'games'">
           <div class="admin-actions"><form class="admin-search" @submit.prevent="searchTab('games')"><input v-model="gameSearch" placeholder="搜索游戏名称或 slug" /><button class="button button-secondary button-small" type="submit">搜索</button></form><button class="button button-primary" @click="openNewGame"><Plus :size="17" />新增游戏</button></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>游戏</th><th>分类</th><th>权限</th><th>发布状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in games" :key="item.id"><td><div class="admin-game-cell"><img :src="item.cover_url" alt="" /><div><strong>{{ item.name }}</strong><small>{{ item.slug }}</small></div></div></td><td>{{ item.category }}</td><td>{{ item.resource_type === 'free' ? '免费' : '会员' }}</td><td>{{ gameStatusLabels[item.status] }}</td><td><div class="row-actions"><button @click="openEditGame(item.id)">编辑</button><button class="danger" title="删除" @click="deleteGame(item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
+          <div class="admin-table-wrap"><table class="admin-table hoverable-table"><thead><tr><th>游戏</th><th>分类</th><th>权限</th><th>发布状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in games" :key="item.id"><td><div class="admin-game-cell"><img :src="item.cover_url" alt="" /><div><strong>{{ item.name }}</strong><small>{{ item.slug }}</small></div></div></td><td>{{ item.category }}</td><td>{{ item.resource_type === 'free' ? '免费' : '会员' }}</td><td>{{ gameStatusLabels[item.status] }}</td><td><div class="row-actions"><button @click="openEditGame(item.id)">编辑</button><button class="danger" title="删除" @click="deleteGame(item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
+          <ElPagination v-if="gameTotal > gamePageSize" class="results-pagination" background layout="prev, pager, next" :current-page="gamePage" :page-size="gamePageSize" :total="gameTotal" @current-change="changeGamePage" />
         </template>
 
         <template v-else-if="activeTab === 'taxonomy'">
@@ -398,7 +409,7 @@ async function saveUser(user: AdminUser) {
 
         <template v-else-if="activeTab === 'users'">
           <div class="admin-list-toolbar"><form class="admin-search" @submit.prevent="searchTab('users')"><input v-model="userSearch" placeholder="搜索用户名" /><button class="button button-secondary button-small" type="submit">搜索</button></form></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>会员</th><th>到期时间</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in users" :key="item.id"><td><strong>{{ item.username }}</strong><small class="table-subline">{{ formatDateTime(item.created_at) }}</small></td><td><select v-model="item.role"><option value="user">用户</option><option value="admin">管理员</option></select></td><td><select v-model="item.status"><option value="active">启用</option><option value="disabled">禁用</option></select></td><td><select v-model="item.member_type"><option value="none">普通</option><option value="monthly">月度</option><option value="lifetime">终身</option></select></td><td><input v-if="item.member_type === 'monthly'" v-model="userExpiryValues[item.id]" type="datetime-local" /><span v-else>-</span></td><td><div class="row-actions"><button class="button button-secondary button-small" @click="saveUser(item)">保存</button><button class="danger-text" title="删除用户" @click="deleteUser(item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
+          <div class="admin-table-wrap"><table class="admin-table hoverable-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>会员</th><th>到期时间</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in users" :key="item.id"><td><strong>{{ item.username }}</strong><small class="table-subline">{{ formatDateTime(item.created_at) }}</small></td><td><select v-model="item.role"><option value="user">用户</option><option value="admin">管理员</option></select></td><td><select v-model="item.status"><option value="active">启用</option><option value="disabled">禁用</option></select></td><td><select v-model="item.member_type"><option value="none">普通</option><option value="monthly">月度</option><option value="lifetime">终身</option></select></td><td><input v-if="item.member_type === 'monthly'" v-model="userExpiryValues[item.id]" type="datetime-local" /><span v-else>-</span></td><td><div class="row-actions"><button class="button button-secondary button-small" @click="saveUser(item)">保存</button><button class="danger-text" title="删除用户" @click="deleteUser(item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
         </template>
       </main>
     </div>
