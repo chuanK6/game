@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ArrowUp, RotateCcw, Search, SlidersHorizontal } from 'lucide-vue-next'
 import { ElCheckbox, ElCheckboxGroup, ElPagination } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
 import { catalogApi, getGames } from '@/api/client'
+import { navigationPending } from '@/router'
 import type { Game, Taxonomy } from '@/types/game'
 
 const route = useRoute()
@@ -19,30 +20,49 @@ const games = ref<Game[]>([])
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')
+const filterError = ref('')
 const desktopPageSize = 20
 const mobilePageSize = 8
 const isMobile = ref(window.matchMedia('(max-width: 760px)').matches)
 const pageSize = computed(() => isMobile.value ? mobilePageSize : desktopPageSize)
 let searchTimer: number | undefined
+let listRequest: AbortController | undefined
+let filterRequest: AbortController | undefined
+let leaving = false
+let disposed = false
 
-Promise.all([catalogApi.categories(), catalogApi.tags()])
-  .then(([categoryItems, tagItems]) => {
+async function loadFilters() {
+  if (leaving || disposed) return
+  filterRequest?.abort()
+  const request = new AbortController()
+  filterRequest = request
+  filterError.value = ''
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(15000)])
+  try {
+    const [categoryItems, tagItems] = await Promise.all([catalogApi.categories(signal), catalogApi.tags(signal)])
+    if (request.signal.aborted || leaving || disposed) return
     categories.value = categoryItems
     tags.value = tagItems
-  })
-  .catch(() => { loadError.value = '筛选项加载失败，请刷新重试。' })
+  } catch {
+    if (!request.signal.aborted && !leaving && !disposed) filterError.value = '筛选项加载失败，可点击重试。'
+  }
+}
 
-watch(() => route.query, async (query) => {
+watch(() => route.query, (query) => {
+  if (route.name !== 'games' || leaving) return
   keyword.value = String(query.q ?? '')
   category.value = String(query.category ?? '')
   selectedTags.value = query.tags ? String(query.tags).split(',').filter(Boolean) : []
   currentPage.value = Math.max(1, Number(query.page ?? 1) || 1)
-  await loadGames()
+  void loadGames()
 }, { immediate: true })
 watch(pageSize, () => { void loadGames() })
 
 function updateQuery(page = 1) {
+  window.clearTimeout(searchTimer)
+  if (leaving || disposed || route.name !== 'games') return
   return router.replace({
+    name: 'games',
     query: {
       ...(keyword.value.trim() ? { q: keyword.value.trim() } : {}),
       ...(category.value ? { category: category.value } : {}),
@@ -78,6 +98,10 @@ function scrollToTop() {
 }
 
 async function loadGames() {
+  if (leaving || disposed) return
+  listRequest?.abort()
+  const request = new AbortController()
+  listRequest = request
   loading.value = true
   loadError.value = ''
   try {
@@ -87,25 +111,53 @@ async function loadGames() {
       tags: selectedTags.value.join(','),
       page: currentPage.value,
       pageSize: pageSize.value,
-    })
+    }, AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    if (request.signal.aborted || request !== listRequest || leaving || disposed) return
     games.value = result.games
     total.value = result.pagination.total
   } catch {
+    if (request.signal.aborted || request !== listRequest || leaving || disposed) return
     games.value = []
     total.value = 0
     loadError.value = '游戏列表加载失败，请稍后重试。'
   } finally {
-    loading.value = false
+    if (request === listRequest && !leaving && !disposed) loading.value = false
   }
 }
 
-onBeforeUnmount(() => window.clearTimeout(searchTimer))
+function cancelPendingWork() {
+  window.clearTimeout(searchTimer)
+  listRequest?.abort()
+  filterRequest?.abort()
+}
+
+onBeforeRouteLeave(() => {
+  leaving = true
+  cancelPendingWork()
+})
+
+function resumeAfterFailedNavigation() {
+  if (!leaving || disposed || navigationPending.value || router.currentRoute.value.name !== 'games') return
+  leaving = false
+  void loadGames()
+  void loadFilters()
+}
+const stopAfterEach = router.afterEach((_to, _from, failure) => { if (failure) resumeAfterFailedNavigation() })
+const stopError = router.onError(resumeAfterFailedNavigation)
+
 function updateViewport() { isMobile.value = window.matchMedia('(max-width: 760px)').matches }
 onMounted(() => {
+  void loadFilters()
   updateViewport()
   window.addEventListener('resize', updateViewport)
 })
-onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
+onBeforeUnmount(() => {
+  disposed = true
+  cancelPendingWork()
+  stopAfterEach()
+  stopError()
+  window.removeEventListener('resize', updateViewport)
+})
 </script>
 
 <template>
@@ -121,9 +173,10 @@ onBeforeUnmount(() => window.removeEventListener('resize', updateViewport))
     <div class="container games-layout">
       <aside class="filter-panel">
         <div class="filter-title"><SlidersHorizontal :size="19" />筛选</div>
+        <p v-if="filterError" class="filter-load-error">{{ filterError }} <button class="reset-button" @click="loadFilters">重新加载筛选项</button></p>
         <div class="filter-group">
-          <label>关键词</label>
-          <div class="filter-search"><Search :size="17" /><input v-model="keyword" placeholder="游戏名称或关键词" @input="scheduleSearch" @keyup.enter="updateQuery()" /></div>
+          <label>游戏名称</label>
+          <div class="filter-search"><Search :size="17" /><input v-model="keyword" aria-label="搜索游戏名称" placeholder="输入游戏名称" @input="scheduleSearch" @keyup.enter="updateQuery()" /></div>
         </div>
         <div class="filter-group">
           <label>分类</label>

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Menu, Search, UserRound, X } from 'lucide-vue-next'
+import { Menu, Moon, Search, Sun, UserRound, X } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
+import { navigationError, navigationPending } from '@/router'
 
 const router = useRouter()
 const auth = useAuthStore()
+const theme = useThemeStore()
 const keyword = ref('')
 const mobileOpen = ref(false)
 
@@ -39,6 +42,10 @@ function closeMenu() {
           <Search :size="17" aria-hidden="true" />
           <input v-model="keyword" aria-label="搜索游戏" placeholder="搜索游戏" />
         </form>
+        <button type="button" class="icon-button theme-toggle" :aria-label="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" :title="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" @click="theme.toggle">
+          <Sun v-if="theme.isDark" :size="19" aria-hidden="true" />
+          <Moon v-else :size="19" aria-hidden="true" />
+        </button>
         <RouterLink v-if="!auth.isLoggedIn" to="/auth" class="button button-primary button-small">
           <UserRound :size="17" />
           登录
@@ -53,5 +60,7 @@ function closeMenu() {
         </button>
       </div>
     </div>
+    <div v-if="navigationPending" class="navigation-progress" role="progressbar" aria-label="正在打开页面"></div>
+    <div v-if="navigationError" class="navigation-notice" role="alert"><span>{{ navigationError }}</span><button type="button" class="icon-button" aria-label="关闭提示" @click="navigationError = ''"><X :size="18" /></button></div>
   </header>
 </template>

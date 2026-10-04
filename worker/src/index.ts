@@ -207,8 +207,8 @@ app.get('/games', async (context) => {
   const bindings: Array<string | number> = []
 
   if (q) {
-    filters.push('(g.name LIKE ? OR g.description LIKE ?)')
-    bindings.push(`%${q}%`, `%${q}%`)
+    filters.push('g.name LIKE ?')
+    bindings.push(`%${q}%`)
   }
   if (category) {
     filters.push('c.slug = ?')

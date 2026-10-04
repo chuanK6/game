@@ -1,5 +1,10 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { ref } from 'vue'
+import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+
+export const navigationPending = ref(false)
+export const navigationError = ref('')
+let pendingRoute: RouteLocationNormalized | undefined
 
 const router = createRouter({
   history: createWebHistory(),
@@ -23,13 +28,36 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  pendingRoute = to
+  navigationPending.value = true
+  navigationError.value = ''
   const auth = useAuthStore()
-  await auth.restore()
+  if (!to.meta.requiresAuth && to.name !== 'auth') {
+    // Public navigation must not wait for a slow session request.
+    void auth.restore().catch(() => { /* Protected routes will offer a retry on failure. */ })
+    return
+  }
+  try {
+    await auth.restore()
+  } catch {
+    if (pendingRoute === to) navigationError.value = '登录状态暂时无法确认，请稍后再次点击导航。'
+    return false
+  }
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { name: 'auth', query: { redirect: to.fullPath } }
   }
   if (to.meta.requiresAdmin && !auth.isAdmin) return { name: 'home' }
   if (to.name === 'auth' && auth.isLoggedIn) return { name: 'home' }
+})
+
+router.afterEach((to) => {
+  if (pendingRoute === to) navigationPending.value = false
+})
+
+router.onError((_error, to) => {
+  if (pendingRoute !== to) return
+  navigationPending.value = false
+  navigationError.value = '页面加载失败，请再次点击导航重试，或刷新页面。'
 })
 
 export default router

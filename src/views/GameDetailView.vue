@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { AlertTriangle, ArrowDown, CalendarDays, ChevronLeft, Download, ExternalLink, Gamepad2, LockKeyhole, Monitor, MonitorCog, ShieldCheck } from 'lucide-vue-next'
+import { AlertTriangle, ArrowDown, CalendarDays, ChevronLeft, Download, ExternalLink, Gamepad2, LockKeyhole, MonitorCog, ShieldCheck } from 'lucide-vue-next'
 import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
 import { ApiError, catalogApi, feedbackApi } from '@/api/client'
 import type { DownloadSource, Game } from '@/types/game'
@@ -108,7 +108,6 @@ async function handleDownload() {
           <div class="detail-cover-frame">
             <img v-if="!coverFailed" :src="game.cover" :alt="`${game.name} 游戏封面`" class="detail-cover" fetchpriority="high" @error="coverFailed = true" />
             <div v-else class="detail-cover-fallback"><Gamepad2 :size="48" /><span>游戏封面暂不可用</span></div>
-            <span class="detail-platform"><Monitor :size="14" />PC 游戏</span>
           </div>
           <div class="detail-summary">
             <div class="detail-meta"><span :class="['large-resource-badge', game.resourceType]">{{ game.resourceType === 'free' ? '免费资源' : '会员资源' }}</span><span :class="['resource-status', game.resourceStatus]"><span aria-hidden="true"></span>{{ resourceStatusText }}</span></div>

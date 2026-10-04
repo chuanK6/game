@@ -35,6 +35,35 @@ test('首页、游戏库和详情页可用', async ({ page }, testInfo) => {
   expect(consoleErrors).toEqual([])
 })
 
+test('游戏搜索只匹配名称，并支持分类和标签组合筛选', async ({ page, request }) => {
+  const detail = await request.get('/api/games/island-craft')
+  expect(detail.ok()).toBeTruthy()
+  expect((await detail.json()).data.description).toContain('收集材料')
+
+  await page.locator('.hero-search input').fill('  工坊  ')
+  await page.locator('.hero-search input').press('Enter')
+  await expect(page).toHaveURL(/\/games\?q=/)
+  await expect(page.locator('.game-card')).toHaveCount(1)
+  await expect(page.locator('.game-card')).toContainText('浮岛工坊')
+
+  await page.locator('.filter-search input').fill('收集材料')
+  await expect(page.getByRole('heading', { name: '没有找到相关游戏' })).toBeVisible()
+  await expect(page.locator('.results-header')).toContainText('0 个结果')
+  await expect(page.locator('.game-card')).toHaveCount(0)
+
+  const matched = await request.get('/api/games', { params: { q: '工坊', category: 'simulation', tags: 'casual', pageSize: 1 } })
+  expect(matched.ok()).toBeTruthy()
+  const matchedBody = await matched.json()
+  expect(matchedBody.data.map((game: { slug: string }) => game.slug)).toEqual(['island-craft'])
+  expect(matchedBody.pagination.total).toBe(1)
+
+  const descriptionOnly = await request.get('/api/games', { params: { q: '收集材料', category: 'simulation', tags: 'casual' } })
+  expect(descriptionOnly.ok()).toBeTruthy()
+  const emptyBody = await descriptionOnly.json()
+  expect(emptyBody.data).toEqual([])
+  expect(emptyBody.pagination.total).toBe(0)
+})
+
 test('注册、会话恢复和会员工单流程可用', async ({ page }) => {
   const username = `e2e${Date.now().toString().slice(-8)}`
   await page.goto('/auth')

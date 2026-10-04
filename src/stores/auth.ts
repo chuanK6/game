@@ -6,6 +6,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<CurrentUser | null>(null)
   const initialized = ref(false)
   let restorePromise: Promise<void> | null = null
+  let sessionVersion = 0
 
   const isLoggedIn = computed(() => user.value !== null)
   const isMember = computed(() => user.value?.isMember ?? false)
@@ -14,14 +15,20 @@ export const useAuthStore = defineStore('auth', () => {
   function restore() {
     if (initialized.value) return Promise.resolve()
     if (restorePromise) return restorePromise
+    const version = sessionVersion
     restorePromise = authApi.me()
-      .then((currentUser) => { user.value = currentUser })
+      .then((currentUser) => {
+        if (version !== sessionVersion) return
+        user.value = currentUser
+        initialized.value = true
+      })
       .catch((error: unknown) => {
+        if (version !== sessionVersion) return
         if (!(error instanceof ApiError) || error.status !== 401) throw error
         user.value = null
+        initialized.value = true
       })
       .finally(() => {
-        initialized.value = true
         restorePromise = null
       })
     return restorePromise
@@ -29,11 +36,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(username: string, password: string) {
     user.value = await authApi.login(username, password)
+    sessionVersion += 1
     initialized.value = true
   }
 
   async function register(username: string, password: string) {
     user.value = await authApi.register(username, password)
+    sessionVersion += 1
     initialized.value = true
   }
 
@@ -41,6 +50,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       await authApi.logout()
     } finally {
+      sessionVersion += 1
       user.value = null
       initialized.value = true
     }
@@ -48,6 +58,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function refresh() {
     user.value = await authApi.me()
+    sessionVersion += 1
     initialized.value = true
   }
 

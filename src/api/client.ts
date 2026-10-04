@@ -98,12 +98,12 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
   return payload.data
 }
 
-export async function getGames(query: Record<string, string | number | undefined> = {}) {
+export async function getGames(query: Record<string, string | number | undefined> = {}, signal?: AbortSignal) {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined && value !== '') params.set(key, String(value))
   }
-  const response = await fetch(`${API_BASE}/games?${params}`, { credentials: 'include' })
+  const response = await fetch(`${API_BASE}/games?${params}`, { credentials: 'include', signal })
   const payload = await response.json() as PaginatedResponse<Game[]> | ErrorResponse
   if (!response.ok || !payload.ok) {
     const error = payload.ok ? { code: 'REQUEST_FAILED', message: '游戏列表加载失败。' } : payload.error
@@ -113,14 +113,14 @@ export async function getGames(query: Record<string, string | number | undefined
 }
 
 export const catalogApi = {
-  categories: () => apiRequest<Taxonomy[]>('/categories'),
-  tags: () => apiRequest<Taxonomy[]>('/tags'),
+  categories: (signal?: AbortSignal) => apiRequest<Taxonomy[]>('/categories', { signal }),
+  tags: (signal?: AbortSignal) => apiRequest<Taxonomy[]>('/tags', { signal }),
   game: (slug: string) => apiRequest<Game>(`/games/${encodeURIComponent(slug)}`),
   downloads: (slug: string) => apiRequest<DownloadSource[]>(`/games/${encodeURIComponent(slug)}/downloads`),
 }
 
 export const authApi = {
-  me: () => apiRequest<CurrentUser | null>('/auth/me'),
+  me: () => apiRequest<CurrentUser | null>('/auth/me', { signal: AbortSignal.timeout(8000) }),
   login: (username: string, password: string) => apiRequest<CurrentUser>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   register: (username: string, password: string) => apiRequest<CurrentUser>('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => apiRequest<null>('/auth/logout', { method: 'POST' }),

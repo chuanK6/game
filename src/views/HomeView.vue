@@ -71,7 +71,7 @@ function preloadHeroImages() {
       <p>按名称、分类或标签，快速找到适合你的游戏。</p>
       <form class="hero-search" role="search" @submit.prevent="submitSearch">
         <Search :size="22" aria-hidden="true" />
-        <input v-model="keyword" aria-label="搜索游戏名称或关键词" placeholder="搜索游戏名称或关键词" autofocus />
+        <input v-model="keyword" aria-label="搜索游戏名称" placeholder="搜索游戏名称" autofocus />
         <button type="submit" class="button button-accent">搜索</button>
       </form>
       <div class="hero-trust">
