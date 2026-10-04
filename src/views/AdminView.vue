@@ -350,6 +350,7 @@ async function saveUser(user: AdminUser) {
   }
   try {
     await adminApi.updateUser(user.id, { status: user.status, role: user.role, memberType: user.member_type, memberExpireAt })
+    await loadTab('users')
     ElMessage.success(`${user.username} 已更新`)
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '用户更新失败')
@@ -386,11 +387,11 @@ async function saveUser(user: AdminUser) {
           <div class="taxonomy-sections">
             <section>
               <div class="taxonomy-heading"><div><h3>游戏分类</h3><p>用于游戏列表筛选与归档，可通过排序值调整展示顺序。</p></div><button class="button button-primary button-small" @click="openTaxonomy('categories')"><Plus :size="16" />新增分类</button></div>
-              <div class="admin-table-wrap"><table class="admin-table taxonomy-table"><thead><tr><th>名称</th><th>Slug</th><th>排序</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in categories" :key="item.id"><td><strong>{{ item.name }}</strong></td><td><code>{{ item.slug }}</code></td><td>{{ item.sort }}</td><td><span :class="['taxonomy-status', item.status]">{{ item.status === 'active' ? '启用' : '停用' }}</span></td><td><div class="row-actions"><button @click="openTaxonomy('categories', item)">编辑</button><button class="danger" title="删除" @click="deleteTaxonomy('categories', item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
+              <div class="admin-table-wrap"><table class="admin-table taxonomy-table"><thead><tr><th>名称</th><th>Slug</th><th>排序</th><th>状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in categories" :key="item.id"><td><strong>{{ item.name }}</strong></td><td><code>{{ item.slug }}</code></td><td>{{ item.sort }}</td><td><span :class="['taxonomy-status', item.status]">{{ item.status === 'active' ? '启用' : '停用' }}</span></td><td><div class="row-actions"><button @click="openTaxonomy('categories', item)">编辑</button><button class="danger" title="删除" @click="deleteTaxonomy('categories', item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
             </section>
             <section>
               <div class="taxonomy-heading"><div><h3>游戏标签</h3><p>用于标记游戏特征和组合筛选。</p></div><button class="button button-primary button-small" @click="openTaxonomy('tags')"><Plus :size="16" />新增标签</button></div>
-              <div class="admin-table-wrap"><table class="admin-table taxonomy-table"><thead><tr><th>名称</th><th>Slug</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="item in tags" :key="item.id"><td><strong>{{ item.name }}</strong></td><td><code>{{ item.slug }}</code></td><td><span :class="['taxonomy-status', item.status]">{{ item.status === 'active' ? '启用' : '停用' }}</span></td><td><div class="row-actions"><button @click="openTaxonomy('tags', item)">编辑</button><button class="danger" title="删除" @click="deleteTaxonomy('tags', item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
+              <div class="admin-table-wrap"><table class="admin-table taxonomy-table"><thead><tr><th>名称</th><th>Slug</th><th>状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in tags" :key="item.id"><td><strong>{{ item.name }}</strong></td><td><code>{{ item.slug }}</code></td><td><span :class="['taxonomy-status', item.status]">{{ item.status === 'active' ? '启用' : '停用' }}</span></td><td><div class="row-actions"><button @click="openTaxonomy('tags', item)">编辑</button><button class="danger" title="删除" @click="deleteTaxonomy('tags', item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
             </section>
           </div>
         </template>

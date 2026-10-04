@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 test('首页、游戏库和详情页可用', async ({ page }, testInfo) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text())
+    if (message.type() === 'error' || (message.type() === 'warning' && message.text().includes('[Vue warn]'))) consoleErrors.push(message.text())
   })
 
   await page.goto('/')
@@ -27,7 +27,11 @@ test('首页、游戏库和详情页可用', async ({ page }, testInfo) => {
   await page.locator('.game-card').first().click()
   await expect(page.getByRole('heading', { name: '浮岛工坊' })).toBeVisible()
   await expect(page.getByText('登录后获取下载地址')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '最低配置' })).toBeVisible()
+  await expect(page.locator('.config-list')).toContainText('操作系统')
+  await expect(page.locator('.detail-cover')).toBeVisible()
   await expectNoHorizontalOverflow(page)
+  await page.screenshot({ path: `test-results/detail-${testInfo.project.name}.png`, fullPage: true, animations: 'disabled' })
   expect(consoleErrors).toEqual([])
 })
 

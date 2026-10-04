@@ -1,14 +1,26 @@
 <script setup lang="ts">
 import AppHeader from '@/components/AppHeader.vue'
+
+function disableLeavingPage(element: Element) {
+  element.setAttribute('inert', '')
+  element.setAttribute('aria-hidden', 'true')
+}
+
+function enablePage(element: Element) {
+  element.removeAttribute('inert')
+  element.removeAttribute('aria-hidden')
+}
 </script>
 
 <template>
   <div class="app-shell">
     <AppHeader />
-    <main>
+    <main class="route-stage">
       <RouterView v-slot="{ Component, route }">
-        <Transition name="page">
-          <component :is="Component" :key="route.name" />
+        <Transition name="page" @before-leave="disableLeavingPage" @before-enter="enablePage" @leave-cancelled="enablePage">
+          <div v-if="Component" :key="route.path" class="route-page">
+            <component :is="Component" />
+          </div>
         </Transition>
       </RouterView>
     </main>

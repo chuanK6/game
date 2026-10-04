@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { z } from 'zod'
+import { serializeUser } from './auth'
 import type { AppEnv } from './types'
 
 const admin = new Hono<AppEnv>()
@@ -29,14 +30,23 @@ admin.get('/overview', async (context) => {
   } })
 })
 
+type AdminUserRow = Parameters<typeof serializeUser>[0] & {
+  status: 'active' | 'disabled'
+  member_started_at: string | null
+  created_at: string
+}
+
 admin.get('/users', async (context) => {
   const q = String(context.req.query('q') ?? '').trim()
   const result = await context.env.DB.prepare(`
     SELECT id, username, avatar_url, role, status, member_type, member_started_at, member_expire_at, created_at
     FROM users WHERE deleted_at IS NULL AND (? = '' OR username LIKE ?)
     ORDER BY role = 'admin' DESC, created_at DESC, id DESC LIMIT 200
-  `).bind(q, `%${q}%`).all()
-  return context.json({ ok: true, data: result.results })
+  `).bind(q, `%${q}%`).all<AdminUserRow>()
+  // Use the same effective membership as authentication and download checks.
+  // Retain the stored expiry for history and future renewal edits.
+  const users = result.results.map((row) => ({ ...row, member_type: serializeUser(row).memberType }))
+  return context.json({ ok: true, data: users })
 })
 
 const userUpdateSchema = z.object({

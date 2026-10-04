@@ -3,7 +3,13 @@ import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return { ...savedPosition, behavior: 'instant' }
+    if (to.hash) return { el: to.hash, top: 92, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }
+    // Keep filters and profile tabs in place; only a new page resets the scroll.
+    if (to.path === from.path) return false
+    return { top: 0, behavior: 'instant' }
+  },
   routes: [
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
     { path: '/games', name: 'games', component: () => import('@/views/GamesView.vue') },
