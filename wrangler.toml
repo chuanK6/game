@@ -5,6 +5,7 @@ compatibility_date = "2026-08-31"
 [vars]
 APP_ENV = "production"
 ALLOWED_ORIGIN = "https://game-web64639712467.t0l0qbxa.workers.dev"
+MEDIA_PUBLIC_URL = "https://cdn.youlang.cc.cd"
 
 [observability]
 enabled = true
@@ -32,3 +33,7 @@ binding = "DB"
 database_name = "youlun-db"
 database_id = "aeef8550-5864-46d1-9e07-e10ec3b3f646"
 migrations_dir = "worker/migrations"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "youlang"

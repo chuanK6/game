@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { z } from 'zod'
 import { serializeUser } from './auth'
+import { uploadImage } from './media'
 import type { AppEnv } from './types'
 
 const admin = new Hono<AppEnv>()
@@ -14,6 +15,7 @@ const requireAdmin = createMiddleware<AppEnv>(async (context, next) => {
 })
 
 admin.use('*', requireAdmin)
+admin.post('/uploads/images', uploadImage)
 
 admin.get('/overview', async (context) => {
   const [users, games, orders, feedback] = await context.env.DB.batch([
@@ -209,7 +211,8 @@ const gameSchema = z.object({
   name: z.string().trim().min(1).max(100),
   slug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   coverUrl: z.string().trim().min(1).max(1000),
-  description: z.string().trim().min(10).max(5000),
+  description: z.string().min(10).max(30000).refine((value) => value.trim().length >= 10),
+  descriptionFormat: z.enum(['plain', 'markdown']).optional(),
   minConfig: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
   categoryId: z.number().int().positive(),
   resourceType: z.enum(['free', 'member']),
@@ -267,9 +270,9 @@ admin.post('/games', async (context) => {
   try {
     const value = parsed.data
     const result = await context.env.DB.prepare(`
-      INSERT INTO games (name, slug, cover_url, description, min_config, category_id, resource_type, resource_status, status, publish_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(value.name, value.slug, value.coverUrl, value.description, JSON.stringify(value.minConfig), value.categoryId,
+      INSERT INTO games (name, slug, cover_url, description, description_format, min_config, category_id, resource_type, resource_status, status, publish_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(value.name, value.slug, value.coverUrl, value.description, value.descriptionFormat ?? 'plain', JSON.stringify(value.minConfig), value.categoryId,
       value.resourceType, value.resourceStatus, value.status, value.publishAt || null).run()
     const gameId = Number(result.meta.last_row_id)
     await context.env.DB.batch(gameRelations(context.env.DB, gameId, value.tagIds, value.downloads))
@@ -287,10 +290,10 @@ admin.put('/games/:id', async (context) => {
   const value = parsed.data
   try {
     const statements = [context.env.DB.prepare(`
-      UPDATE games SET name = ?, slug = ?, cover_url = ?, description = ?, min_config = ?, category_id = ?,
+      UPDATE games SET name = ?, slug = ?, cover_url = ?, description = ?, description_format = COALESCE(?, description_format), min_config = ?, category_id = ?,
         resource_type = ?, resource_status = ?, status = ?, publish_at = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND deleted_at IS NULL
-    `).bind(value.name, value.slug, value.coverUrl, value.description, JSON.stringify(value.minConfig), value.categoryId,
+    `).bind(value.name, value.slug, value.coverUrl, value.description, value.descriptionFormat ?? null, JSON.stringify(value.minConfig), value.categoryId,
       value.resourceType, value.resourceStatus, value.status, value.publishAt || null, gameId),
     context.env.DB.prepare('DELETE FROM game_tags WHERE game_id = ?').bind(gameId),
     context.env.DB.prepare('DELETE FROM game_downloads WHERE game_id = ?').bind(gameId),

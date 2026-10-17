@@ -10,7 +10,8 @@
 - 免费/会员下载地址按身份授权，公开响应不包含真实 URL。
 - 用户反馈、资源失效提醒、会员付款工单和进度查询。
 - 管理后台的游戏/下载地址、分类/标签、用户会员、工单审核和反馈处理。
-- Cloudinary 游戏封面上传。
+- R2 游戏封面和正文图片上传，兼容已有 Cloudinary 图片地址。
+- Markdown 游戏介绍、实时预览、截图粘贴/拖拽上传、图片放大，以及旧纯文本介绍的转换预览。
 
 ## 本地开发
 
@@ -59,7 +60,7 @@ npm run typecheck:api
 
 ## 生产部署
 
-先执行远程迁移：
+先执行远程迁移（本次新增 `0003_game_description_format.sql`，已有介绍默认保留为纯文本）：
 
 ```bash
 npm run db:migrate:remote
@@ -67,9 +68,24 @@ npm run db:migrate:remote
 
 `main` 分支已连接 Cloudflare Workers Builds。每次推送后执行 `npm run build` 和 `npx wrangler deploy`。生产资源配置位于 `wrangler.toml`。
 
+## 图片与 Markdown
+
+- `wrangler.toml` 中的 `MEDIA` 绑定存储桶 `youlang`，`MEDIA_PUBLIC_URL` 为 `https://cdn.youlang.cc.cd`。部署账号需有该桶的访问权限；Worker 通过绑定上传，无需配置 S3 访问密钥。
+- `POST /api/admin/uploads/images` 使用登录 Cookie 和管理员权限，接收 `multipart/form-data` 的 `file` 与 `purpose`（`cover` / `content`），返回 `{ ok: true, data: { key, url } }`。
+- 支持 JPG、PNG、WebP，每张最多 5 MB。服务端限制实际请求大小并检查文件签名和 MIME；浏览器会按需缩小 JPEG/PNG 大图。
+- `wrangler dev` 默认使用本地 R2，上传返回 `/api/media/images/...`；线上返回图片自定义域名。公开图片读取支持 HEAD、ETag 和长期缓存，并跳过会话/D1 查询。
+- 图片按随机文件名保存到 `images/cover/` 和 `images/content/`。第一版保留上传后未使用的图片；清理前须检查游戏封面和正文（包括草稿）的引用。
+- 正文保存在 D1 的 `description`，格式保存在 `description_format`。新建游戏默认 `markdown`，旧数据为 `plain`；旧客户端省略格式字段时，更新操作保留原格式。
+- 后台支持编辑/预览、桌面双栏、全屏、上传失败重试；上传期间暂停正文编辑并禁用保存。关闭表单会取消上传，避免结果回填其他游戏。
+- 旧介绍可继续直接编辑，或点击“转换为 Markdown”，预览后采用。转换及其他编辑仅在“保存游戏”后持久化。
+- Markdown 最多 30000 字符，使用 `markdown-it`（关闭原始 HTML）与 DOMPurify。后台预览和详情共用渲染器、深色主题与手机样式。
+- 游戏列表只返回卡片字段，完整介绍及最低配置通过详情接口获取。会员下载地址仍由鉴权接口提供。
+
+相关测试：`npx playwright test tests/e2e/markdown.spec.ts`，建议使用 Node 24（测试使用内置 `node:sqlite`）。测试使用隔离的内存数据库与图片存储替身，覆盖迁移、权限、文件校验、缓存、旧数据编辑和 Markdown 安全渲染。
+
 ## 安全说明
 
-- 不要提交 `.env`、`.dev.vars`、Cloudflare 凭据或 Cloudinary API Secret。
+- 不要提交 `.env`、`.dev.vars`、Cloudflare 凭据或 R2 S3 访问密钥。
 - 下载地址只允许通过鉴权 API 返回，不得加入公开详情或前端源码。
-- Cloudinary unsigned preset 应在控制台限制图片格式、大小、目录和来源。
+- 新上传统一经过管理员接口；历史 Cloudinary 图片可继续显示，移除旧上传 preset 前应确认没有旧客户端使用。
 - 月度会员到期、用户禁用和管理员权限均由 Worker 校验，前端状态不作为授权依据。

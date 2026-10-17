@@ -6,7 +6,7 @@ import { ElCheckbox, ElCheckboxGroup, ElPagination } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
 import { catalogApi, getGames } from '@/api/client'
 import { navigationPending } from '@/router'
-import type { Game, Taxonomy } from '@/types/game'
+import type { GameSummary, Taxonomy } from '@/types/game'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,7 +16,7 @@ const selectedTags = ref<string[]>([])
 const currentPage = ref(1)
 const categories = ref<Taxonomy[]>([])
 const tags = ref<Taxonomy[]>([])
-const games = ref<Game[]>([])
+const games = ref<GameSummary[]>([])
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')

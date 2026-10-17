@@ -6,6 +6,7 @@ import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
 import { ApiError, catalogApi, feedbackApi } from '@/api/client'
 import type { DownloadSource, Game } from '@/types/game'
 import { useAuthStore } from '@/stores/auth'
+import MarkdownContent from '@/components/MarkdownContent.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,7 +125,8 @@ async function handleDownload() {
       <div class="container detail-layout">
         <section class="detail-block detail-introduction" aria-labelledby="introduction-title">
           <div class="detail-block-heading"><span class="detail-section-icon"><Gamepad2 :size="21" /></span><h2 id="introduction-title">游戏介绍</h2></div>
-          <p class="description">{{ game.description || '游戏介绍正在补充中。' }}</p>
+          <MarkdownContent v-if="game.descriptionFormat === 'markdown' && game.description" :content="game.description" />
+          <p v-else class="description">{{ game.description || '游戏介绍正在补充中。' }}</p>
         </section>
 
         <aside id="downloads" class="download-panel" aria-labelledby="downloads-title" :aria-busy="downloadLoading">

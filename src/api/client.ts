@@ -1,4 +1,4 @@
-import type { DownloadSource, Game, Taxonomy } from '@/types/game'
+import type { DescriptionFormat, DownloadSource, Game, GameSummary, Taxonomy } from '@/types/game'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -63,6 +63,7 @@ export type AdminGame = {
 export type AdminGameList = { games: AdminGame[]; pagination: Pagination }
 export type AdminGameDetail = {
   id: number; name: string; slug: string; cover_url: string; description: string; min_config: string
+  description_format: DescriptionFormat
   category_id: number; resource_type: 'free' | 'member'; resource_status: 'available' | 'checking' | 'unavailable'
   status: 'draft' | 'published' | 'offline'; publish_at: string | null; tagIds: number[]; downloads: Array<DownloadSource & { sort: number }>
 }
@@ -79,6 +80,7 @@ export type TaxonomyPayload = {
 }
 export type GamePayload = {
   name: string; slug: string; coverUrl: string; description: string; minConfig: string[]; categoryId: number
+  descriptionFormat: DescriptionFormat
   resourceType: 'free' | 'member'; resourceStatus: 'available' | 'checking' | 'unavailable'
   status: 'draft' | 'published' | 'offline'; publishAt: string | null; tagIds: number[]
   downloads: Array<DownloadSource & { sort: number }>
@@ -88,7 +90,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
-    headers: init.body ? { 'Content-Type': 'application/json', ...init.headers } : init.headers,
+    headers: init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json', ...init.headers } : init.headers,
   })
   const payload = await response.json() as SuccessResponse<T> | ErrorResponse
   if (!response.ok || !payload.ok) {
@@ -104,7 +106,7 @@ export async function getGames(query: Record<string, string | number | undefined
     if (value !== undefined && value !== '') params.set(key, String(value))
   }
   const response = await fetch(`${API_BASE}/games?${params}`, { credentials: 'include', signal })
-  const payload = await response.json() as PaginatedResponse<Game[]> | ErrorResponse
+  const payload = await response.json() as PaginatedResponse<GameSummary[]> | ErrorResponse
   if (!response.ok || !payload.ok) {
     const error = payload.ok ? { code: 'REQUEST_FAILED', message: '游戏列表加载失败。' } : payload.error
     throw new ApiError(error.code, error.message, response.status)
@@ -138,6 +140,12 @@ export const membershipApi = {
 }
 
 export const adminApi = {
+  uploadImage: (file: File, purpose: 'cover' | 'content', signal?: AbortSignal) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('purpose', purpose)
+    return apiRequest<{ key: string; url: string }>('/admin/uploads/images', { method: 'POST', body, signal })
+  },
   overview: () => apiRequest<AdminOverview>('/admin/overview'),
   users: (q = '') => apiRequest<AdminUser[]>(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   updateUser: (id: number, payload: { status?: AdminUser['status']; role?: AdminUser['role']; memberType?: AdminUser['member_type']; memberExpireAt?: string | null }) => apiRequest<null>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),

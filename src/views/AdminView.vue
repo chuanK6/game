@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Upload, Users } from 'lucide-vue-next'
 import { ElButton, ElDialog, ElMessage, ElPagination } from 'element-plus'
 import {
@@ -8,6 +8,10 @@ import {
 } from '@/api/client'
 import type { DownloadSource } from '@/types/game'
 import { formatDateTime, formatDateTimeInput, shanghaiInputToIso } from '@/utils/date'
+import MarkdownEditor from '@/components/MarkdownEditor.vue'
+import MarkdownContent from '@/components/MarkdownContent.vue'
+import { plainToMarkdown } from '@/utils/markdown'
+import { uploadImage } from '@/utils/imageUpload'
 
 type Tab = 'overview' | 'games' | 'taxonomy' | 'orders' | 'feedback' | 'users'
 type TaxonomyKind = 'categories' | 'tags'
@@ -44,6 +48,12 @@ const userExpiryValues = ref<Record<number, string>>({})
 const gameDialog = ref(false)
 const savingGame = ref(false)
 const uploadingCover = ref(false)
+const uploadingContent = ref(false)
+const coverError = ref('')
+const failedCover = ref<File>()
+const convertingDescription = ref(false)
+const convertedDescription = ref('')
+let coverController: AbortController | undefined
 const gameForm = ref<GameForm>(emptyGameForm())
 const taxonomyDialog = ref(false)
 const savingTaxonomy = ref(false)
@@ -59,6 +69,18 @@ const tabs = [
 ]
 
 onMounted(() => { void loadTab('overview') })
+watch(gameDialog, (open) => {
+  if (!open) {
+    coverController?.abort()
+    coverController = undefined
+    uploadingCover.value = false
+    uploadingContent.value = false
+    coverError.value = ''
+    failedCover.value = undefined
+    convertingDescription.value = false
+  }
+})
+onBeforeUnmount(() => coverController?.abort())
 
 async function loadTab(tab: Tab) {
   activeTab.value = tab
@@ -182,7 +204,7 @@ async function deleteTaxonomy(kind: TaxonomyKind, item: AdminTaxonomy) {
 
 function emptyGameForm(): GameForm {
   return {
-    name: '', slug: '', coverUrl: '', description: '', minConfig: [], minConfigFields: emptyConfigFields(), categoryId: 0,
+    name: '', slug: '', coverUrl: '', description: '', descriptionFormat: 'markdown', minConfig: [], minConfigFields: emptyConfigFields(), categoryId: 0,
     resourceType: 'free', resourceStatus: 'available', status: 'draft', publishAt: new Date().toISOString().slice(0, 10),
     tagIds: [], downloads: [],
   }
@@ -233,6 +255,7 @@ async function openEditGame(id: number) {
       slug: item.slug,
       coverUrl: item.cover_url,
       description: item.description,
+      descriptionFormat: item.description_format ?? 'plain',
       minConfig: JSON.parse(item.min_config) as string[],
       minConfigFields: parseConfigFields(JSON.parse(item.min_config) as string[]),
       categoryId: item.category_id,
@@ -257,41 +280,64 @@ async function uploadCover(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-    ElMessage.error('封面仅支持 JPG、PNG、WebP，大小不能超过 5 MB')
-    input.value = ''
-    return
-  }
+  input.value = ''
+  await uploadCoverFile(file)
+}
+
+async function uploadCoverFile(file: File) {
+  if (uploadingCover.value || savingGame.value) return
+  const controller = new AbortController()
+  coverController = controller
+  const form = gameForm.value
   uploadingCover.value = true
+  coverError.value = ''
+  failedCover.value = undefined
   try {
-    const body = new FormData()
-    body.append('file', file)
-    body.append('upload_preset', 'muri10086')
-    body.append('folder', 'game')
-    const response = await fetch('https://api.cloudinary.com/v1_1/wmu4lce4/image/upload', { method: 'POST', body })
-    if (!response.ok) throw new Error('upload_failed')
-    const result = await response.json() as { secure_url: string }
-    gameForm.value.coverUrl = result.secure_url
+    const result = await uploadImage(file, 'cover', controller.signal)
+    if (controller.signal.aborted || gameForm.value !== form || !gameDialog.value) return
+    form.coverUrl = result.url
     ElMessage.success('封面上传成功')
-  } catch {
-    ElMessage.error('封面上传失败，请稍后重试')
+  } catch (error) {
+    if (controller.signal.aborted) return
+    coverError.value = error instanceof Error ? error.message : '封面上传失败，请重试'
+    failedCover.value = file
   } finally {
-    uploadingCover.value = false
-    input.value = ''
+    if (coverController === controller) {
+      uploadingCover.value = false
+      coverController = undefined
+    }
   }
 }
 
+function previewConversion() {
+  convertedDescription.value = plainToMarkdown(gameForm.value.description)
+  if (convertedDescription.value.length > 30000) { ElMessage.error('转换后超过 30000 字符，请先精简介绍'); return }
+  convertingDescription.value = true
+}
+
+function applyConversion() {
+  gameForm.value.description = convertedDescription.value
+  gameForm.value.descriptionFormat = 'markdown'
+  convertingDescription.value = false
+}
+
 async function saveGame() {
+  if (savingGame.value || uploadingCover.value || uploadingContent.value) return
   const value = gameForm.value
   value.minConfig = serializeConfigFields(value.minConfigFields)
   if (!value.name || !value.slug || !value.coverUrl || !value.description || !value.categoryId || !value.minConfig.length) {
     ElMessage.error('请完整填写游戏名称、slug、封面、分类、介绍和最低配置')
     return
   }
+  if (value.description.trim().length < 10 || value.description.length > 30000) {
+    ElMessage.error('游戏介绍须为 10～30000 字符')
+    return
+  }
   savingGame.value = true
   try {
     const payload: GamePayload = {
       name: value.name, slug: value.slug, coverUrl: value.coverUrl, description: value.description,
+      descriptionFormat: value.descriptionFormat,
       minConfig: value.minConfig, categoryId: Number(value.categoryId), resourceType: value.resourceType,
       resourceStatus: value.resourceStatus, status: value.status, publishAt: value.publishAt || null,
       tagIds: value.tagIds.map(Number), downloads: value.downloads.map((item, index) => ({ ...item, sort: Number(item.sort ?? index * 10) })),
@@ -416,23 +462,31 @@ async function saveUser(user: AdminUser) {
     </div>
   </section>
 
-  <el-dialog v-model="gameDialog" :title="gameForm.id ? '编辑游戏' : '新增游戏'" width="min(860px, 96vw)" class="game-editor-dialog">
+  <el-dialog v-model="gameDialog" :title="gameForm.id ? '编辑游戏' : '新增游戏'" width="min(1100px, 96vw)" class="game-editor-dialog" destroy-on-close :close-on-click-modal="false" :show-close="!savingGame" :close-on-press-escape="!savingGame">
     <form class="game-editor" @submit.prevent="saveGame">
       <label>游戏名称<input v-model="gameForm.name" maxlength="100" required /></label>
       <label>Slug<input v-model="gameForm.slug" maxlength="100" placeholder="example-game" required /></label>
-      <label class="wide">封面地址<div class="cover-input-row"><input v-model="gameForm.coverUrl" required /><label class="button button-secondary upload-button"><Upload :size="16" />{{ uploadingCover ? '上传中...' : '上传封面' }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="uploadingCover" @change="uploadCover" /></label></div></label>
+      <label class="wide">封面地址<div class="cover-input-row"><input v-model="gameForm.coverUrl" required :disabled="uploadingCover || savingGame" /><label class="button button-secondary upload-button"><Upload :size="16" />{{ uploadingCover ? '上传中...' : '上传封面' }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="uploadingCover || savingGame" @change="uploadCover" /></label></div></label>
+      <div v-if="coverError" class="wide cover-upload-error" role="alert">{{ coverError }}<button v-if="failedCover" type="button" class="button button-secondary button-small" @click="uploadCoverFile(failedCover)">重试封面上传</button></div>
       <img v-if="gameForm.coverUrl" :src="gameForm.coverUrl" alt="封面预览" class="cover-preview" />
       <label>分类<select v-model.number="gameForm.categoryId" required><option :value="0" disabled>请选择</option><option v-for="item in categories.filter((entry) => entry.status === 'active')" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
       <label>资源权限<select v-model="gameForm.resourceType"><option value="free">免费</option><option value="member">会员</option></select></label>
       <label>资源状态<select v-model="gameForm.resourceStatus"><option value="available">可用</option><option value="checking">检查中</option><option value="unavailable">不可用</option></select></label>
       <label>发布状态<select v-model="gameForm.status"><option value="draft">草稿</option><option value="published">发布</option><option value="offline">下架</option></select></label>
       <label>发布日期<input v-model="gameForm.publishAt" type="date" /></label>
-      <label class="wide">游戏介绍<textarea v-model="gameForm.description" rows="5" maxlength="5000" required></textarea></label>
+      <MarkdownEditor v-if="gameDialog && gameForm.descriptionFormat === 'markdown'" v-model="gameForm.description" class="wide" :disabled="savingGame" @uploading="uploadingContent = $event" />
+      <div v-else-if="gameForm.descriptionFormat === 'plain'" class="wide legacy-description"><label for="legacy-description">游戏介绍（纯文本）</label><textarea id="legacy-description" v-model="gameForm.description" rows="7" maxlength="30000" required></textarea><p>已有介绍保留原来的显示方式。转换后可以使用标题、列表和图片，保存游戏后生效。</p><button type="button" class="button button-secondary button-small" :disabled="savingGame" @click="previewConversion">转换为 Markdown</button></div>
       <fieldset class="wide config-editor"><legend>最低配置</legend><label v-for="field in CONFIG_FIELDS" :key="field.key">{{ field.label }}<input v-model="gameForm.minConfigFields[field.key]" :placeholder="field.placeholder" maxlength="200" /></label><p>至少填写一项；每个字段可填写多行内容。</p></fieldset>
       <fieldset class="wide"><legend>标签</legend><label v-for="item in tags.filter((entry) => entry.status === 'active')" :key="item.id" class="tag-option"><input v-model="gameForm.tagIds" type="checkbox" :value="item.id" />{{ item.name }}</label></fieldset>
       <fieldset class="wide download-editor"><legend>下载地址</legend><div v-for="(item, index) in gameForm.downloads" :key="index" class="download-editor-row"><input v-model="item.provider" placeholder="网盘名称" /><input v-model="item.label" placeholder="资源说明" /><input v-model="item.url" type="url" placeholder="https://..." /><button type="button" class="icon-button" title="移除" @click="gameForm.downloads.splice(index, 1)"><Trash2 :size="17" /></button></div><button type="button" class="button button-secondary button-small" @click="addDownload"><Plus :size="16" />添加地址</button></fieldset>
     </form>
-    <template #footer><el-button @click="gameDialog = false">取消</el-button><el-button type="primary" :loading="savingGame" @click="saveGame">保存游戏</el-button></template>
+    <template #footer><el-button :disabled="savingGame" @click="gameDialog = false">取消</el-button><el-button type="primary" :loading="savingGame" :disabled="uploadingCover || uploadingContent" @click="saveGame">保存游戏</el-button></template>
+  </el-dialog>
+
+  <el-dialog v-model="convertingDescription" title="转换介绍预览" width="min(800px, 94vw)" append-to-body>
+    <p class="dialog-note">特殊符号已转义。确认预览后，可继续编辑并插入图片。</p>
+    <MarkdownContent :content="convertedDescription" />
+    <template #footer><el-button @click="convertingDescription = false">取消</el-button><el-button type="primary" @click="applyConversion">使用 Markdown</el-button></template>
   </el-dialog>
 
   <el-dialog v-model="taxonomyDialog" :title="`${taxonomyForm.id ? '编辑' : '新增'}${taxonomyKind === 'categories' ? '分类' : '标签'}`" width="min(480px, 94vw)">

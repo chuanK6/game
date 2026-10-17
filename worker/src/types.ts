@@ -3,6 +3,8 @@ export type UserRole = 'user' | 'admin'
 
 export type Bindings = {
   DB: D1Database
+  MEDIA: R2Bucket
+  MEDIA_PUBLIC_URL?: string
   ASSETS: Fetcher
   APP_ENV: string
   ALLOWED_ORIGIN: string

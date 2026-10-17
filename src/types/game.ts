@@ -12,16 +12,22 @@ export interface DownloadSource {
   url: string
 }
 
-export interface Game {
+export type DescriptionFormat = 'plain' | 'markdown'
+
+export interface GameSummary {
   id: number
   slug: string
   name: string
   cover: string
   category: Taxonomy
   tags: Taxonomy[]
-  description: string
-  minConfig: string[]
   resourceType: ResourceType
   resourceStatus: 'available' | 'checking' | 'unavailable'
   publishAt: string
+}
+
+export interface Game extends GameSummary {
+  description: string
+  descriptionFormat: DescriptionFormat
+  minConfig: string[]
 }

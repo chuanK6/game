@@ -9,7 +9,7 @@
 - Element Plus、Lucide Vue：表单、弹窗、分页和图标。
 - Hono、Zod：Cloudflare Worker API、路由和输入校验。
 - Cloudflare Workers、D1、Wrangler：运行时、SQLite 数据库、迁移和部署。
-- Cloudinary：管理员浏览器端无签名上传游戏封面。
+- Cloudflare R2：管理员通过 Worker 上传封面和正文图片，旧 Cloudinary 图片地址继续兼容；`markdown-it` + DOMPurify 渲染 Markdown 介绍。
 - Playwright：Edge 桌面和手机视口端到端测试。
 
 # 3. 核心目录
@@ -33,6 +33,8 @@
 - `src/styles.css`：基础样式、动画和响应式规则；`src/styles/theme.css`：夜间语义颜色、Element Plus 变量、导航提示及主题按钮的手机适配。
 - `worker/src/index.ts`：公开 API、认证入口、反馈、会员工单、下载权限和全局中间件。
 - `worker/src/admin.ts`：管理员专用 API；涉及后台 CRUD、审核或用户权限时优先查看。
+- `worker/src/media.ts`：管理员图片上传、文件大小/签名校验及公开图片读取；`MEDIA` 为 R2 绑定，线上图片域名使用 `MEDIA_PUBLIC_URL`，本地使用 `/api/media/`。
+- `src/components/MarkdownEditor.vue`、`MarkdownContent.vue`：介绍编辑、共享预览/详情渲染、图片上传与放大；`src/utils/markdown.ts` 处理安全渲染和旧文本转换，`imageUpload.ts` 处理浏览器压缩与上传，`src/styles/markdown.css` 适配手机和深色主题。
 - 后台用户列表与登录、下载鉴权共用 `serializeUser` 判断会员有效性：到期月度会员返回 `none`，保留原数据库会员记录和到期时间；保存用户后刷新列表，展示当前有效身份。
 - `worker/src/auth.ts`：PBKDF2 密码哈希、HttpOnly Cookie、会话读取与会员有效期计算。
 - `wrangler.toml`：生产 Worker、静态资源、D1 绑定、允许来源和日志配置。
@@ -41,7 +43,9 @@
 
 业务数据存于 Cloudflare D1。完整表结构在 `worker/migrations/0001_initial.sql`，登录限流表在 `0002_auth_attempts.sql`；主要表包括用户、会话、游戏、下载链接、分类、标签、反馈和会员工单。API 均位于 `/api`，由 `worker/src/index.ts` 和 `admin.ts` 提供；管理员列表接口使用 `q` 参数搜索，提供游戏、工单、反馈和用户删除接口。前端通过 `src/api/client.ts` 使用 Cookie 同域通信。公开游戏接口不会返回真实下载 URL，下载地址只能通过鉴权接口取得。
 
-重要配置包括 Worker 的 `DB`、`ASSETS`、`APP_ENV`、`ALLOWED_ORIGIN`，以及前端可选的 `VITE_API_BASE_URL`、`VITE_SUPPORT_EMAIL`。不得在文档或代码中记录真实密钥。
+重要配置包括 Worker 的 `DB`、`ASSETS`、`MEDIA`、`MEDIA_PUBLIC_URL`、`APP_ENV`、`ALLOWED_ORIGIN`，以及前端可选的 `VITE_API_BASE_URL`、`VITE_SUPPORT_EMAIL`。R2 桶为 `youlang`，图片域名为 `https://cdn.youlang.cc.cd`，Worker 使用绑定访问，无需 S3 密钥。不得在文档或代码中记录真实密钥。
+
+`0003_game_description_format.sql` 新增 `games.description_format`（`plain` / `markdown`）。历史数据默认 `plain`，新后台创建默认 `markdown`，旧客户端更新省略格式时保留原值；正文仍存 `description`，上限 30000 字符。游戏列表只返回卡片字段（`GameSummary`），详情才返回正文和最低配置（`Game`）。`POST /api/admin/uploads/images` 接收 `file` 与 `purpose`，返回 `key/url`，仅管理员可调用；限制单张 5 MB、JPG/PNG/WebP。公开图片路由在会话中间件之前挂载，避免图片请求访问 D1。
 
 # 6. 功能之间的关系
 
@@ -51,7 +55,8 @@ flowchart LR
   V --> S[Pinia / API Client]
   S --> H[Hono Worker /api]
   H --> D[(Cloudflare D1)]
-  V --> C[Cloudinary 封面上传]
+  V --> M[Markdown 编辑与预览]
+  H --> R[R2 封面与正文图片]
   H --> A[认证与角色/会员校验]
 ```
 
@@ -87,6 +92,8 @@ npm run deploy
 - 首页背景会随机开始、预加载后线性缩放并交叉淡入；修改时要保持无灰屏并兼容 `prefers-reduced-motion`。
 - 页面过渡为短暂淡入和轻微位移，兼容 `prefers-reduced-motion`；仅路径变化重建页面，筛选和个人中心标签变化保持滚动位置。详情页在挂载时按当前 slug 加载，依赖 `App.vue` 的路径键，不能直接改回只按路由名称复用。
 - 管理后台最低配置固定字段最终仍保存为 `minConfig: string[]`，不要误改为新数据库对象结构。
+- Markdown 关闭原始 HTML，并清理生成结果；预览和详情使用同一组件。旧纯文本不得未经转换直接按 Markdown 解释；转换与图片上传结果随保存游戏生效。上传进行中禁用保存，关闭编辑器取消上传。正文是公开内容，不能承载需要鉴权的下载地址。
+- R2 图片使用随机对象 key 和长期缓存，旧图地址保留；暂不自动删除未引用图片，清理前检查封面、正文和草稿引用。生产发布新代码前须执行 `0003` 迁移；本地 R2 数据不会上传到线上。
 - `wrangler.toml` 中 Worker 名称、D1 ID、资源绑定、生产来源和 SPA 静态资源策略相互关联，不要随意替换。生产库不要重复执行开发 seed。
 - 修改后至少运行类型检查和构建；按用户最新偏好，非重要样式和交互修改无需默认运行端到端测试，由用户手动体验；重要业务或权限变更再选择必要测试。
 
@@ -97,5 +104,7 @@ npm run deploy
 - 当前 `tests/e2e/` 共 16 个测试实例，覆盖基本业务流程、仅按名称搜索与组合筛选、路由过渡、筛选位置、详情异常状态、减少动态效果及后台会员到期和分类标签操作；后台测试以隔离数据执行真实用户列表处理函数，不改开发库中的管理员身份。完整鉴权矩阵与慢网络返回位置仍可补充验证。
 
 # AI 快速上手
+
+2026-10-17 已接入 R2 与 Markdown 介绍。新增 `tests/e2e/markdown.spec.ts`，覆盖上传权限、实际文件大小与签名、公开读取缓存、迁移兼容、旧文本转换、新游戏封面/粘贴/拖拽/重试、关闭表单取消上传、安全渲染与手机布局；测试总数为 30 个（桌面/手机各 15）。生产发布前执行 `npm run db:migrate:remote`，再部署 Worker。
 
 这是一个 Vue 3 + TypeScript 前端、Hono + Cloudflare Workers 后端、D1 数据库组成的 PC 游戏资源网站，前端静态资源和 `/api` 由同一 Worker 托管。页面在 `src/views/`，请求统一在 `src/api/client.ts`，登录状态在 `src/stores/auth.ts`，路由权限在 `src/router/index.ts`；公开及用户 API 看 `worker/src/index.ts`，后台 API 看 `worker/src/admin.ts`，认证看 `worker/src/auth.ts`，数据库结构看 `worker/migrations/`。本地先迁移并 seed D1，再分别运行 `npm run dev:api` 和 `npm run dev`。修改接口要同步前后端类型，修改布局要检查 `src/styles.css` 的手机媒体查询，并始终保留服务端下载、会员和管理员权限校验。

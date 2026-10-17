@@ -4,13 +4,13 @@ import { useRouter } from 'vue-router'
 import { ArrowRight, Search, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import GameCard from '@/components/GameCard.vue'
 import { getGames } from '@/api/client'
-import type { Game } from '@/types/game'
+import type { GameSummary } from '@/types/game'
 
 const router = useRouter()
 const keyword = ref('')
 const heroImages = ['/assets/hero/hero-1.webp', '/assets/hero/hero-2.webp', '/assets/hero/hero-3.webp', '/assets/hero/hero-4.webp']
 const activeHero = ref(Math.floor(Math.random() * heroImages.length))
-const latestGames = ref<Game[]>([])
+const latestGames = ref<GameSummary[]>([])
 const loading = ref(true)
 const loadError = ref('')
 let timer: number | undefined

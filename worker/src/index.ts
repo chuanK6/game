@@ -5,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { z } from 'zod'
 import { clearSession, createSession, hashPassword, readSession, serializeUser, sha256, verifyPassword } from './auth'
 import admin from './admin'
+import media from './media'
 import type { AppEnv } from './types'
 
 type GameRow = {
@@ -13,6 +14,7 @@ type GameRow = {
   name: string
   cover_url: string
   description: string
+  description_format: 'plain' | 'markdown'
   min_config: string
   resource_type: 'free' | 'member'
   resource_status: 'available' | 'checking' | 'unavailable'
@@ -32,6 +34,8 @@ type LoginUserRow = {
   member_type: 'none' | 'monthly' | 'lifetime'
   member_expire_at: string | null
 }
+
+type GameSummaryRow = Omit<GameRow, 'description' | 'description_format' | 'min_config'>
 
 const app = new Hono<AppEnv>().basePath('/api')
 
@@ -56,6 +60,8 @@ app.use('*', async (context, next) => {
   }
   await next()
 })
+// Public images do not need a session or a D1 lookup.
+app.route('/media', media)
 app.use('*', async (context, next) => {
   const session = await readSession(context)
   if (session) {
@@ -224,19 +230,19 @@ app.get('/games', async (context) => {
     `SELECT COUNT(*) AS total FROM games g JOIN categories c ON c.id = g.category_id WHERE ${where}`,
   ).bind(...bindings).first<{ total: number }>()
   const offset = (page - 1) * pageSize
-  const result = await context.env.DB.prepare(`${gameSelectSql} WHERE ${where}
+  const result = await context.env.DB.prepare(`${gameSelectSql(false)} WHERE ${where}
     GROUP BY g.id ORDER BY g.publish_at DESC, g.id DESC LIMIT ? OFFSET ?
-  `).bind(...bindings, pageSize, offset).all<GameRow>()
+  `).bind(...bindings, pageSize, offset).all<GameSummaryRow>()
 
   return context.json({
     ok: true,
-    data: result.results.map(serializeGame),
+    data: result.results.map(serializeGameSummary),
     pagination: { page, pageSize, total: countRow?.total ?? 0 },
   })
 })
 
 app.get('/games/:slug', async (context) => {
-  const row = await context.env.DB.prepare(`${gameSelectSql}
+  const row = await context.env.DB.prepare(`${gameSelectSql(true)}
     WHERE g.slug = ? AND g.status = 'published' AND g.deleted_at IS NULL GROUP BY g.id
   `).bind(context.req.param('slug')).first<GameRow>()
   if (!row) return fail(context, 404, 'GAME_NOT_FOUND', '游戏不存在或已下架。')
@@ -332,8 +338,8 @@ app.get('/membership/orders', requireAuth, async (context) => {
 
 app.route('/admin', admin)
 
-const gameSelectSql = `
-  SELECT g.id, g.slug, g.name, g.cover_url, g.description, g.min_config, g.resource_type,
+const gameSelectSql = (details: boolean) => `
+  SELECT g.id, g.slug, g.name, g.cover_url, ${details ? 'g.description, g.description_format, g.min_config,' : ''} g.resource_type,
          g.resource_status, g.publish_at, c.name AS category, c.slug AS category_slug,
          GROUP_CONCAT(DISTINCT CASE WHEN t.id IS NOT NULL THEN t.slug || char(31) || t.name END) AS tag_pairs
   FROM games g
@@ -342,7 +348,7 @@ const gameSelectSql = `
   LEFT JOIN tags t ON t.id = gt.tag_id AND t.status = 'active' AND t.deleted_at IS NULL
 `
 
-function serializeGame(row: GameRow) {
+function serializeGameSummary(row: GameSummaryRow) {
   const tags = row.tag_pairs ? row.tag_pairs.split(',').map((pair) => {
     const [slug, name] = pair.split(String.fromCharCode(31))
     return { name, slug }
@@ -352,14 +358,17 @@ function serializeGame(row: GameRow) {
     slug: row.slug,
     name: row.name,
     cover: row.cover_url,
-    description: row.description,
-    minConfig: JSON.parse(row.min_config) as string[],
     resourceType: row.resource_type,
     resourceStatus: row.resource_status,
     publishAt: row.publish_at,
     category: { name: row.category, slug: row.category_slug },
     tags,
   }
+}
+
+function serializeGame(row: GameRow) {
+  return { ...serializeGameSummary(row), description: row.description,
+    descriptionFormat: row.description_format, minConfig: JSON.parse(row.min_config) as string[] }
 }
 
 async function findUserById(database: D1Database, userId: number) {

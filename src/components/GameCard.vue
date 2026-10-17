@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { CalendarDays } from 'lucide-vue-next'
-import type { Game } from '@/types/game'
+import type { GameSummary } from '@/types/game'
 
-defineProps<{ game: Game }>()
+defineProps<{ game: GameSummary }>()
 </script>
 
 <template>
