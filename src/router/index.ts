@@ -1,14 +1,29 @@
 import { ref } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { beginCatalogRender, cancelCatalogScroll, catalogPosition, waitForCatalogRender } from '@/utils/catalogNavigation'
 
 export const navigationPending = ref(false)
 export const navigationError = ref('')
 let pendingRoute: RouteLocationNormalized | undefined
+let navigationVersion = 0
 
 const router = createRouter({
   history: createWebHistory(),
-  scrollBehavior(to, from, savedPosition) {
+  async scrollBehavior(to, from, savedPosition) {
+    if (to.name === 'games') {
+      const version = navigationVersion
+      const oldTop = window.scrollY
+      const restore = Boolean(window.history.state?.restoreCatalog)
+      if (!(await waitForCatalogRender(to.fullPath)) || version !== navigationVersion) return false
+      if (savedPosition) return { ...savedPosition, behavior: 'instant' }
+      if (restore && from.name === 'game-detail') return { top: catalogPosition(to.fullPath), behavior: 'instant' }
+      if (to.path === from.path) {
+        if (String(to.query.page ?? 1) !== String(from.query.page ?? 1)) return { el: '#catalog-results', top: 92, behavior: 'instant' }
+        return { top: oldTop, behavior: 'instant' }
+      }
+      return { top: 0, behavior: 'instant' }
+    }
     if (savedPosition) return { ...savedPosition, behavior: 'instant' }
     if (to.hash) return { el: to.hash, top: 92, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }
     // Keep filters and profile tabs in place; only a new page resets the scroll.
@@ -28,6 +43,9 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  navigationVersion++
+  cancelCatalogScroll()
+  if (to.name === 'games') beginCatalogRender(to.fullPath)
   pendingRoute = to
   navigationPending.value = true
   navigationError.value = ''

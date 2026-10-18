@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, ArrowDown, CalendarDays, ChevronLeft, Download, ExternalLink, Gamepad2, LockKeyhole, MonitorCog, ShieldCheck } from 'lucide-vue-next'
 import { ElButton, ElDialog, ElInput, ElMessage } from 'element-plus'
@@ -7,6 +7,7 @@ import { ApiError, catalogApi, feedbackApi } from '@/api/client'
 import type { DownloadSource, Game } from '@/types/game'
 import { useAuthStore } from '@/stores/auth'
 import MarkdownContent from '@/components/MarkdownContent.vue'
+import { safeCatalogPath } from '@/utils/catalogQuery'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,6 +22,13 @@ const feedbackText = ref('')
 const feedbackLoading = ref(false)
 const hasPermission = computed(() => Boolean(game.value && auth.isLoggedIn && (game.value.resourceType === 'free' || auth.isMember || auth.isAdmin)))
 const slug = String(route.params.slug)
+const returnPath = ref('/games')
+const returnLocation = computed(() => {
+  const target = router.resolve(returnPath.value)
+  return { path: target.path, query: target.query, state: { restoreCatalog: true } }
+})
+let detailRequest: AbortController | undefined
+let disposed = false
 const coverFailed = ref(false)
 const resourceStatusText = computed(() => ({ available: '资源可用', checking: '资源维护中', unavailable: '资源暂不可用' })[game.value?.resourceStatus ?? 'checking'])
 const requirements = computed(() => (game.value?.minConfig ?? []).filter((item) => item.trim()).map((item) => {
@@ -29,19 +37,36 @@ const requirements = computed(() => (game.value?.minConfig ?? []).filter((item) 
   return { label: item.slice(0, separator).trim(), value: item.slice(separator + 1).trim() }
 }))
 
-onMounted(() => { void loadGame() })
+function syncReturnPath() {
+  returnPath.value = safeCatalogPath(window.history.state?.catalogReturnTo) ?? safeCatalogPath(window.history.state?.back) ?? '/games'
+}
+const stopAfterNavigation = router.afterEach(to => {
+  if (to.name === 'game-detail' && String(to.params.slug) === slug) syncReturnPath()
+})
+onMounted(() => {
+  syncReturnPath()
+  void loadGame()
+})
+onBeforeUnmount(() => { disposed = true; detailRequest?.abort(); stopAfterNavigation() })
+watch(() => [auth.user?.id, auth.isMember, auth.isAdmin], () => { downloads.value = null })
 
 async function loadGame() {
+  detailRequest?.abort()
+  const request = new AbortController()
+  detailRequest = request
   loading.value = true
   loadError.value = ''
   downloads.value = null
+  coverFailed.value = false
   try {
-    game.value = await catalogApi.game(slug)
+    const result = await catalogApi.game(slug, AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    if (!disposed && !request.signal.aborted && detailRequest === request) game.value = result
   } catch (error) {
+    if (disposed || request.signal.aborted || detailRequest !== request) return
     game.value = null
     loadError.value = error instanceof ApiError ? error.message : '游戏详情加载失败。'
   } finally {
-    loading.value = false
+    if (!disposed && detailRequest === request) loading.value = false
   }
 }
 
@@ -77,8 +102,11 @@ async function handleDownload() {
   }
 
   downloadLoading.value = true
+  const userId = auth.user?.id
   try {
-    downloads.value = await catalogApi.downloads(game.value.slug)
+    const sources = await catalogApi.downloads(game.value.slug)
+    if (disposed || userId !== auth.user?.id || !hasPermission.value) return
+    downloads.value = sources
     if (!downloads.value.length) ElMessage.info('管理员暂未配置可用下载地址')
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '下载地址加载失败')
@@ -104,7 +132,7 @@ async function handleDownload() {
       <div class="detail-backdrop" :style="{ backgroundImage: coverFailed ? undefined : `url(${game.cover})` }" aria-hidden="true"></div>
       <div class="detail-overlay" aria-hidden="true"></div>
       <div class="container detail-hero-inner">
-        <RouterLink to="/games" class="back-link"><ChevronLeft :size="18" />返回游戏库</RouterLink>
+        <RouterLink :to="returnLocation" class="back-link"><ChevronLeft :size="18" />返回游戏库</RouterLink>
         <div class="detail-overview">
           <div class="detail-cover-frame">
             <img v-if="!coverFailed" :src="game.cover" :alt="`${game.name} 游戏封面`" class="detail-cover" fetchpriority="high" @error="coverFailed = true" />
@@ -167,5 +195,5 @@ async function handleDownload() {
       <template #footer><el-button @click="feedbackOpen = false">取消</el-button><el-button type="primary" :loading="feedbackLoading" :disabled="!feedbackText.trim()" @click="submitFeedback">提交提醒</el-button></template>
     </el-dialog>
   </div>
-  <div v-else class="empty-state standalone detail-error"><Gamepad2 :size="40" /><h1>游戏不可用</h1><p>{{ loadError }}</p><div class="detail-error-actions"><button class="button button-primary" @click="loadGame">重新加载</button><RouterLink to="/games" class="button button-secondary">返回游戏库</RouterLink></div></div>
+  <div v-else class="empty-state standalone detail-error"><Gamepad2 :size="40" /><h1>游戏不可用</h1><p>{{ loadError }}</p><div class="detail-error-actions"><button class="button button-primary" @click="loadGame">重新加载</button><RouterLink :to="returnLocation" class="button button-secondary">返回游戏库</RouterLink></div></div>
 </template>

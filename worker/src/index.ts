@@ -195,20 +195,37 @@ app.get('/tags', async (context) => {
   return context.json({ ok: true, data: result.results })
 })
 
+app.get('/game-filters', async (context) => {
+  context.header('Cache-Control', 'no-store')
+  const [categories, tags, years] = await context.env.DB.batch([
+    context.env.DB.prepare("SELECT id, name, slug FROM categories WHERE status = 'active' AND deleted_at IS NULL ORDER BY sort ASC, id ASC"),
+    context.env.DB.prepare("SELECT id, name, slug FROM tags WHERE status = 'active' AND deleted_at IS NULL ORDER BY name ASC"),
+    context.env.DB.prepare("SELECT DISTINCT substr(publish_at, 1, 4) AS year FROM games WHERE status = 'published' AND deleted_at IS NULL AND publish_at GLOB '[0-9][0-9][0-9][0-9]-*' ORDER BY year DESC"),
+  ])
+  return context.json({ ok: true, data: { categories: categories.results, tags: tags.results,
+    years: years.results.map(row => Number((row as { year: string }).year)).filter(year => year >= 1900 && year <= 9999) } })
+})
+
 const listQuerySchema = z.object({
   q: z.string().trim().max(80).optional().default(''),
   category: z.string().trim().max(60).optional().default(''),
-  tags: z.string().trim().max(200).optional().default(''),
-  page: z.coerce.number().int().min(1).optional().default(1),
+  tags: z.string().trim().max(1220).optional().default('').refine(value => {
+    const tags = value.split(',').map(tag => tag.trim()).filter(Boolean)
+    return tags.length <= 20 && tags.every(tag => tag.length <= 60)
+  }),
+  year: z.coerce.number().int().min(1900).max(9999).optional(),
+  resourceType: z.enum(['free', 'member']).optional(),
+  page: z.coerce.number().int().min(1).max(100000).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(20).optional().default(20),
 })
 
 app.get('/games', async (context) => {
+  context.header('Cache-Control', 'no-store')
   const parsed = listQuerySchema.safeParse(context.req.query())
   if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '筛选参数不正确。')
 
-  const { q, category, tags, page, pageSize } = parsed.data
-  const requestedTags = tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+  const { q, category, tags, year, resourceType, pageSize } = parsed.data
+  const requestedTags = [...new Set(tags.split(',').map((tag) => tag.trim()).filter(Boolean))]
   const filters = ["g.status = 'published'", 'g.deleted_at IS NULL']
   const bindings: Array<string | number> = []
 
@@ -220,8 +237,10 @@ app.get('/games', async (context) => {
     filters.push('c.slug = ?')
     bindings.push(category)
   }
+  if (year) { filters.push('substr(g.publish_at, 1, 4) = ?'); bindings.push(String(year)) }
+  if (resourceType) { filters.push('g.resource_type = ?'); bindings.push(resourceType) }
   for (const tag of requestedTags) {
-    filters.push('EXISTS (SELECT 1 FROM game_tags gt_filter JOIN tags t_filter ON t_filter.id = gt_filter.tag_id WHERE gt_filter.game_id = g.id AND t_filter.slug = ?)')
+    filters.push("EXISTS (SELECT 1 FROM game_tags gt_filter JOIN tags t_filter ON t_filter.id = gt_filter.tag_id WHERE gt_filter.game_id = g.id AND t_filter.slug = ? AND t_filter.status = 'active' AND t_filter.deleted_at IS NULL)")
     bindings.push(tag)
   }
 
@@ -229,6 +248,8 @@ app.get('/games', async (context) => {
   const countRow = await context.env.DB.prepare(
     `SELECT COUNT(*) AS total FROM games g JOIN categories c ON c.id = g.category_id WHERE ${where}`,
   ).bind(...bindings).first<{ total: number }>()
+  const total = countRow?.total ?? 0
+  const page = Math.min(parsed.data.page, Math.max(1, Math.ceil(total / pageSize)))
   const offset = (page - 1) * pageSize
   const result = await context.env.DB.prepare(`${gameSelectSql(false)} WHERE ${where}
     GROUP BY g.id ORDER BY g.publish_at DESC, g.id DESC LIMIT ? OFFSET ?
@@ -237,7 +258,7 @@ app.get('/games', async (context) => {
   return context.json({
     ok: true,
     data: result.results.map(serializeGameSummary),
-    pagination: { page, pageSize, total: countRow?.total ?? 0 },
+    pagination: { page, pageSize, total },
   })
 })
 

@@ -40,7 +40,7 @@ function closeMenu() {
       <div class="header-actions">
         <form class="header-search" role="search" @submit.prevent="search">
           <Search :size="17" aria-hidden="true" />
-          <input v-model="keyword" aria-label="搜索游戏" placeholder="搜索游戏" />
+          <input v-model="keyword" aria-label="搜索游戏" placeholder="搜索游戏" maxlength="80" />
         </form>
         <button type="button" class="icon-button theme-toggle" :aria-label="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" :title="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" @click="theme.toggle">
           <Sun v-if="theme.isDark" :size="19" aria-hidden="true" />

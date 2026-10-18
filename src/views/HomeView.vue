@@ -15,6 +15,7 @@ const loading = ref(true)
 const loadError = ref('')
 let timer: number | undefined
 let unmounted = false
+let listRequest: AbortController | undefined
 const HERO_INTERVAL = 7200
 
 function submitSearch() {
@@ -23,15 +24,20 @@ function submitSearch() {
 }
 
 async function loadHome() {
+  listRequest?.abort()
+  const request = new AbortController()
+  listRequest = request
   loading.value = true
   loadError.value = ''
   try {
-    const gameResult = await getGames({ pageSize: 12 })
+    const gameResult = await getGames({ pageSize: 12 }, AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    if (request.signal.aborted || request !== listRequest || unmounted) return
     latestGames.value = gameResult.games
   } catch {
+    if (request.signal.aborted || request !== listRequest || unmounted) return
     loadError.value = '内容加载失败，请稍后重试。'
   } finally {
-    loading.value = false
+    if (request === listRequest && !unmounted) loading.value = false
   }
 }
 
@@ -46,6 +52,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   unmounted = true
+  listRequest?.abort()
   window.clearInterval(timer)
 })
 
@@ -71,7 +78,7 @@ function preloadHeroImages() {
       <p>按名称、分类或标签，快速找到适合你的游戏。</p>
       <form class="hero-search" role="search" @submit.prevent="submitSearch">
         <Search :size="22" aria-hidden="true" />
-        <input v-model="keyword" aria-label="搜索游戏名称" placeholder="搜索游戏名称" autofocus />
+        <input v-model="keyword" aria-label="搜索游戏名称" placeholder="搜索游戏名称" maxlength="80" />
         <button type="submit" class="button button-accent">搜索</button>
       </form>
       <div class="hero-trust">

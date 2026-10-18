@@ -24,6 +24,9 @@ test('切换页面不会叠高，筛选保留位置，详情返回后可以打�
     return box ? box.y >= 62 && box.y + box.height <= (page.viewportSize()?.height ?? 0) : false
   }).toBe(true)
   await page.getByRole('link', { name: '返回游戏库' }).click()
+  await expect(page.locator('.game-card')).toHaveCount(1)
+  await expect(page).toHaveURL(/category=simulation/)
+  await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(page.locator('.game-card')).toHaveCount(4)
   await page.locator('.game-card').filter({ hasText: '星海漂流者' }).click()
   await expect(page.getByRole('heading', { name: '星海漂流者', exact: true })).toBeVisible()

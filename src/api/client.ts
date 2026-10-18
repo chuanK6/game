@@ -1,4 +1,5 @@
 import type { DescriptionFormat, DownloadSource, Game, GameSummary, Taxonomy } from '@/types/game'
+import { invalidateCatalogCache, type CatalogFilters } from '@/utils/catalogCache'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -98,6 +99,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
     const error = payload.ok ? { code: 'REQUEST_FAILED', message: '请求失败。' } : payload.error
     throw new ApiError(error.code, error.message, response.status)
   }
+  if (init.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method) && /^\/admin\/(games|categories|tags)(?:\/|$)/.test(path)) invalidateCatalogCache()
   return payload.data
 }
 
@@ -116,9 +118,10 @@ export async function getGames(query: Record<string, string | number | undefined
 }
 
 export const catalogApi = {
+  filters: (signal?: AbortSignal) => apiRequest<CatalogFilters>('/game-filters', { signal }),
   categories: (signal?: AbortSignal) => apiRequest<Taxonomy[]>('/categories', { signal }),
   tags: (signal?: AbortSignal) => apiRequest<Taxonomy[]>('/tags', { signal }),
-  game: (slug: string) => apiRequest<Game>(`/games/${encodeURIComponent(slug)}`),
+  game: (slug: string, signal?: AbortSignal) => apiRequest<Game>(`/games/${encodeURIComponent(slug)}`, { signal }),
   downloads: (slug: string) => apiRequest<DownloadSource[]>(`/games/${encodeURIComponent(slug)}/downloads`),
 }
 
