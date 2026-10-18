@@ -29,7 +29,7 @@
 - `src/stores/theme.ts`：日间/夜间主题，默认跟随系统，手动选择以 `youlun-theme` 保存并同步其他标签页；`index.html` 的首屏脚本提前应用主题，避免夜间刷新闪白。
 - `src/views/HomeView.vue`、`GamesView.vue`、`ProfileView.vue`：首页轮播、游戏分页筛选、个人中心与会员工单的主要实现。
 - `src/views/GameDetailView.vue`：封面摘要、介绍、最低配置与下载卡片；封面不显示硬编码的平台标识；桌面下载区吸顶，手机按介绍、下载、配置排列；包含骨架屏、加载重试、封面回退和资源维护状态。
-- `src/views/AdminView.vue`：独立侧栏、顶栏和主题切换的管理后台；概览展示真实统计与待办，游戏列表使用分类/权限/发布状态下拉筛选，其他模块保留原有 CRUD。
+- `src/views/AdminView.vue`：独立侧栏、顶栏和主题切换的管理后台；“回到网站”位于顶部栏最右侧。概览展示真实统计与待办，游戏列表使用分类/权限/发布状态下拉筛选；分类与标签通过顶部两个按钮切换，每次进入该模块默认显示分类，单次只渲染一张表。
 - `src/components/AdminGameEditor.vue`：游戏编辑弹窗的四个页签（基础信息、游戏介绍、配置要求、标签与下载）；`src/utils/adminGameForm.ts` 负责旧数据载入、配置序列化、跨页签校验和提交载荷；`src/styles/admin.css` 为后台独立样式。
 - `src/composables/useAdminGames.ts`：后台列表请求取消、15 秒超时和过期响应隔离；组件内 LRU 最多缓存 6 页/60 条，30 秒过期，写入/删除/手动刷新使缓存失效，离开后台时释放。
 - `src/styles.css`：基础样式、动画和响应式规则；`src/styles/theme.css`：夜间语义颜色、Element Plus 变量、导航提示及主题按钮的手机适配。

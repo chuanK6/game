@@ -81,11 +81,12 @@ test('用户管理保存到期时间后显示普通用户，分类与标签可�
   await expect(lifetime.getByRole('combobox').nth(2)).toHaveValue('lifetime')
 
   await page.getByRole('button', { name: '分类与标签', exact: true }).click()
-  await expect(page.locator('.taxonomy-table')).toHaveCount(2)
+  await expect(page.locator('.taxonomy-table')).toHaveCount(1)
   await page.locator('.taxonomy-table').first().getByRole('button', { name: '编辑', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '编辑分类' })).toBeVisible()
   await page.getByRole('button', { name: '取消', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
+  await page.getByRole('group', { name: '分类与标签切换' }).getByRole('button', { name: '标签', exact: true }).click()
   await page.locator('.taxonomy-table').last().getByRole('button', { name: '编辑', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '编辑标签' })).toBeVisible()
   await page.getByRole('button', { name: '取消', exact: true }).click()

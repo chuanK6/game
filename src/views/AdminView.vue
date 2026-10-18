@@ -5,7 +5,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useAdminGames } from '@/composables/useAdminGames'
 import AdminGameEditor from '@/components/AdminGameEditor.vue'
 import '@/styles/admin.css'
-import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Users, ArrowUpRight, ChevronRight, Moon, Sun, Search, SlidersHorizontal, X } from 'lucide-vue-next'
+import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Users, ArrowUpRight, ChevronRight, Moon, Sun, Search, SlidersHorizontal, X, House } from 'lucide-vue-next'
 import { ElButton, ElDialog, ElMessage, ElPagination } from 'element-plus'
 import {
   ApiError, adminApi, type AdminFeedback, type AdminGame, type AdminOrder, type AdminOverview,
@@ -46,6 +46,7 @@ const gameDialog = ref(false)
 const taxonomyDialog = ref(false)
 const savingTaxonomy = ref(false)
 const taxonomyKind = ref<TaxonomyKind>('categories')
+const taxonomySection = ref<TaxonomyKind>('categories')
 const taxonomyForm = ref<TaxonomyForm>({ name: '', slug: '', status: 'active', sort: 0 })
 const tabs = [
   { value: 'overview' as const, label: '概览', icon: LayoutDashboard },
@@ -65,6 +66,7 @@ onBeforeUnmount(() => { tabRequest++; detailController?.abort() })
 
 async function loadTab(tab: Tab, force = false) {
   const version = ++tabRequest
+  if (tab === 'taxonomy' && activeTab.value !== 'taxonomy') taxonomySection.value = 'categories'
   activeTab.value = tab
   if (tab !== 'games') { gameList.cancel(); detailController?.abort(); openingGameId.value = null }
   loading.value = tab !== 'games'
@@ -257,10 +259,9 @@ async function saveUser(user: AdminUser) {
         <RouterLink to="/admin" class="admin-brand"><span class="admin-brand-mark">游</span><span><strong>游浪</strong><small>管理后台</small></span></RouterLink>
         <span class="admin-nav-label">工作空间</span>
         <nav aria-label="后台导航"><button v-for="tab in tabs" :key="tab.value" :class="{ active: activeTab === tab.value }" :aria-current="activeTab === tab.value ? 'page' : undefined" @click="loadTab(tab.value)"><component :is="tab.icon" :size="18" /><span>{{ tab.label }}</span><span v-if="tab.value === 'orders' && overview.pendingOrders" class="admin-nav-count">{{ overview.pendingOrders }}</span><span v-if="tab.value === 'feedback' && overview.openFeedback" class="admin-nav-count">{{ overview.openFeedback }}</span></button></nav>
-        <RouterLink to="/" class="admin-back-link"><ArrowUpRight :size="17" />回到网站</RouterLink>
       </aside>
       <div class="admin-workspace">
-      <header class="admin-topbar"><div class="admin-breadcrumb"><span>管理后台</span><ChevronRight :size="14" /><strong>{{ tabs.find(tab => tab.value === activeTab)?.label }}</strong></div><div class="admin-topbar-actions"><button class="icon-button" :aria-label="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" @click="theme.toggle"><Sun v-if="theme.isDark" :size="18" /><Moon v-else :size="18" /></button><span class="admin-avatar">{{ auth.user?.username?.slice(0, 1) }}</span><span class="admin-username">{{ auth.user?.username }}</span></div></header>
+      <header class="admin-topbar"><div class="admin-breadcrumb"><span>管理后台</span><ChevronRight :size="14" /><strong>{{ tabs.find(tab => tab.value === activeTab)?.label }}</strong></div><div class="admin-topbar-actions"><button class="icon-button" :aria-label="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" @click="theme.toggle"><Sun v-if="theme.isDark" :size="18" /><Moon v-else :size="18" /></button><span class="admin-avatar" :title="auth.user?.username">{{ auth.user?.username?.slice(0, 1) }}</span><span class="admin-username">{{ auth.user?.username }}</span><RouterLink to="/" class="admin-return-link"><House :size="16" />回到网站</RouterLink></div></header>
       <main class="admin-content">
         <div class="admin-toolbar"><div><h1>{{ tabs.find((tab) => tab.value === activeTab)?.label }}</h1><p>{{ tabDescriptions[activeTab] }}</p></div><div class="admin-heading-actions"><button class="icon-button" title="刷新" aria-label="刷新" @click="loadTab(activeTab, true)"><RefreshCw :size="18" /></button><button v-if="activeTab === 'games'" class="button button-primary" :disabled="!taxonomyReady" @click="openNewGame"><Plus :size="17" />新增游戏</button></div></div>
         <div v-if="loading" class="empty-state compact"><p>正在加载...</p></div>
@@ -285,12 +286,16 @@ async function saveUser(user: AdminUser) {
         </template>
 
         <template v-else-if="activeTab === 'taxonomy'">
+          <div class="taxonomy-switch" role="group" aria-label="分类与标签切换">
+            <button type="button" :aria-pressed="taxonomySection === 'categories'" aria-controls="taxonomy-categories" @click="taxonomySection = 'categories'">分类</button>
+            <button type="button" :aria-pressed="taxonomySection === 'tags'" aria-controls="taxonomy-tags" @click="taxonomySection = 'tags'">标签</button>
+          </div>
           <div class="taxonomy-sections">
-            <section>
+            <section v-if="taxonomySection === 'categories'" id="taxonomy-categories">
               <div class="taxonomy-heading"><div><h3>游戏分类</h3><p>用于游戏列表筛选与归档，可通过排序值调整展示顺序。</p></div><button class="button button-primary button-small" @click="openTaxonomy('categories')"><Plus :size="16" />新增分类</button></div>
               <div class="admin-table-wrap"><table class="admin-table taxonomy-table"><thead><tr><th>名称</th><th>Slug</th><th>排序</th><th>状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in categories" :key="item.id"><td><strong>{{ item.name }}</strong></td><td><code>{{ item.slug }}</code></td><td>{{ item.sort }}</td><td><span :class="['taxonomy-status', item.status]">{{ item.status === 'active' ? '启用' : '停用' }}</span></td><td><div class="row-actions"><button @click="openTaxonomy('categories', item)">编辑</button><button class="danger" title="删除" @click="deleteTaxonomy('categories', item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
             </section>
-            <section>
+            <section v-else id="taxonomy-tags">
               <div class="taxonomy-heading"><div><h3>游戏标签</h3><p>用于标记游戏特征和组合筛选。</p></div><button class="button button-primary button-small" @click="openTaxonomy('tags')"><Plus :size="16" />新增标签</button></div>
               <div class="admin-table-wrap"><table class="admin-table taxonomy-table"><thead><tr><th>名称</th><th>Slug</th><th>状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in tags" :key="item.id"><td><strong>{{ item.name }}</strong></td><td><code>{{ item.slug }}</code></td><td><span :class="['taxonomy-status', item.status]">{{ item.status === 'active' ? '启用' : '停用' }}</span></td><td><div class="row-actions"><button @click="openTaxonomy('tags', item)">编辑</button><button class="danger" title="删除" @click="deleteTaxonomy('tags', item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
             </section>
