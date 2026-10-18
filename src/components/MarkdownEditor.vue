@@ -110,6 +110,12 @@ function drop(event: DragEvent) {
 }
 
 function cancelUpload() { controller?.abort() }
+async function focus() {
+  mode.value = 'edit'
+  await nextTick()
+  textarea.value?.focus({ preventScroll: true })
+}
+defineExpose({ focus })
 onBeforeUnmount(() => { controller?.abort(); emit('uploading', false) })
 </script>
 

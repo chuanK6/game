@@ -1,39 +1,36 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Upload, Users } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
+import { useAdminGames } from '@/composables/useAdminGames'
+import AdminGameEditor from '@/components/AdminGameEditor.vue'
+import '@/styles/admin.css'
+import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Users, ArrowUpRight, ChevronRight, Moon, Sun, Search, SlidersHorizontal, X } from 'lucide-vue-next'
 import { ElButton, ElDialog, ElMessage, ElPagination } from 'element-plus'
 import {
   ApiError, adminApi, type AdminFeedback, type AdminGame, type AdminOrder, type AdminOverview,
-  type AdminTaxonomy, type AdminUser, type GamePayload, type TaxonomyPayload,
+  type AdminTaxonomy, type AdminUser, type AdminGameDetail, type TaxonomyPayload,
 } from '@/api/client'
-import type { DownloadSource } from '@/types/game'
 import { formatDateTime, formatDateTimeInput, shanghaiInputToIso } from '@/utils/date'
-import MarkdownEditor from '@/components/MarkdownEditor.vue'
-import MarkdownContent from '@/components/MarkdownContent.vue'
-import { plainToMarkdown } from '@/utils/markdown'
-import { uploadImage } from '@/utils/imageUpload'
 
 type Tab = 'overview' | 'games' | 'taxonomy' | 'orders' | 'feedback' | 'users'
 type TaxonomyKind = 'categories' | 'tags'
-const CONFIG_FIELDS = [
-  { key: 'os', label: '操作系统', placeholder: '例如 Windows 10 64 位' },
-  { key: 'cpu', label: '处理器（CPU）', placeholder: '例如 Intel Core i5-8400' },
-  { key: 'memory', label: '内存', placeholder: '例如 8 GB RAM' },
-  { key: 'gpu', label: '显卡', placeholder: '例如 GTX 1060 6 GB' },
-  { key: 'storage', label: '存储空间', placeholder: '例如需要 45 GB 可用空间' },
-  { key: 'other', label: '其他说明', placeholder: '例如需要支持 DirectX 12' },
-] as const
-type ConfigKey = typeof CONFIG_FIELDS[number]['key']
-type ConfigFields = Record<ConfigKey, string>
-type GameForm = GamePayload & { id?: number; minConfigFields: ConfigFields }
 type TaxonomyForm = TaxonomyPayload & { id?: number }
 
 const activeTab = ref<Tab>('overview')
 const loading = ref(false)
 const overview = ref<AdminOverview>({ users: 0, games: 0, pendingOrders: 0, openFeedback: 0 })
-const games = ref<AdminGame[]>([])
-const gamePage = ref(1)
-const gameTotal = ref(0)
+const gameList = useAdminGames()
+const { games, page: gamePage, total: gameTotal, loading: gamesLoading, error: gamesError, filters: gameFilters } = gameList
+const loadError = ref('')
+const auth = useAuthStore()
+const theme = useThemeStore()
+const editingGame = ref<AdminGameDetail | null>(null)
+const openingGameId = ref<number | null>(null)
+const taxonomyReady = ref(false)
+let detailController: AbortController | undefined
+let tabRequest = 0
+const activeFilterCount = computed(() => [gameFilters.q, gameFilters.categoryId, gameFilters.resourceType, gameFilters.status].filter(Boolean).length)
 const gamePageSize = 10
 const orders = ref<AdminOrder[]>([])
 const feedback = ref<AdminFeedback[]>([])
@@ -46,15 +43,6 @@ const categories = ref<AdminTaxonomy[]>([])
 const tags = ref<AdminTaxonomy[]>([])
 const userExpiryValues = ref<Record<number, string>>({})
 const gameDialog = ref(false)
-const savingGame = ref(false)
-const uploadingCover = ref(false)
-const uploadingContent = ref(false)
-const coverError = ref('')
-const failedCover = ref<File>()
-const convertingDescription = ref(false)
-const convertedDescription = ref('')
-let coverController: AbortController | undefined
-const gameForm = ref<GameForm>(emptyGameForm())
 const taxonomyDialog = ref(false)
 const savingTaxonomy = ref(false)
 const taxonomyKind = ref<TaxonomyKind>('categories')
@@ -68,55 +56,42 @@ const tabs = [
   { value: 'users' as const, label: '用户管理', icon: Users },
 ]
 
+const tabDescriptions: Record<Tab, string> = {
+  overview: '站点动态与待办，一目了然。', games: '管理游戏、封面、介绍和下载地址。', taxonomy: '整理游戏分类，维护便于发现内容的标签。',
+  orders: '查看会员申请，及时处理付款工单。', feedback: '回应玩家反馈，跟进资源与使用问题。', users: '管理账号状态与会员权限。',
+}
 onMounted(() => { void loadTab('overview') })
-watch(gameDialog, (open) => {
-  if (!open) {
-    coverController?.abort()
-    coverController = undefined
-    uploadingCover.value = false
-    uploadingContent.value = false
-    coverError.value = ''
-    failedCover.value = undefined
-    convertingDescription.value = false
-  }
-})
-onBeforeUnmount(() => coverController?.abort())
+onBeforeUnmount(() => { tabRequest++; detailController?.abort() })
 
-async function loadTab(tab: Tab) {
+async function loadTab(tab: Tab, force = false) {
+  const version = ++tabRequest
   activeTab.value = tab
-  loading.value = true
+  if (tab !== 'games') { gameList.cancel(); detailController?.abort(); openingGameId.value = null }
+  loading.value = tab !== 'games'
+  loadError.value = ''
+  const current = () => version === tabRequest
   try {
-    if (tab === 'overview') overview.value = await adminApi.overview()
-    if (tab === 'games') {
-      const [gameResult, categoryItems, tagItems] = await Promise.all([adminApi.games(gameSearch.value.trim(), gamePage.value), adminApi.categories(), adminApi.tags()])
-      games.value = gameResult.games
-      gameTotal.value = gameResult.pagination.total
-      categories.value = categoryItems
-      tags.value = tagItems
-    }
+    if (tab === 'overview') { const value = await adminApi.overview(); if (current()) overview.value = value }
+    if (tab === 'games') await Promise.all([gameList.load(force), (!taxonomyReady.value || force) ? loadTaxonomies() : Promise.resolve()])
     if (tab === 'taxonomy') await loadTaxonomies()
-    if (tab === 'orders') orders.value = await adminApi.orders(orderSearch.value.trim())
-    if (tab === 'feedback') feedback.value = await adminApi.feedback(feedbackSearch.value.trim())
+    if (tab === 'orders') { const value = await adminApi.orders(orderSearch.value.trim()); if (current()) orders.value = value }
+    if (tab === 'feedback') { const value = await adminApi.feedback(feedbackSearch.value.trim()); if (current()) feedback.value = value }
     if (tab === 'users') {
-      users.value = await adminApi.users(userSearch.value.trim())
-      userExpiryValues.value = Object.fromEntries(users.value.map((user) => [user.id, formatDateTimeInput(user.member_expire_at)]))
+      const value = await adminApi.users(userSearch.value.trim())
+      if (current()) { users.value = value; userExpiryValues.value = Object.fromEntries(value.map(user => [user.id, formatDateTimeInput(user.member_expire_at)])) }
     }
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '管理数据加载失败')
-  } finally {
-    loading.value = false
-  }
+    if (current()) loadError.value = error instanceof ApiError ? error.message : '加载失败，请重试。'
+  } finally { if (current()) loading.value = false }
 }
 
 function searchTab(tab: Tab) {
-  if (tab === 'games') gamePage.value = 1
+  if (tab === 'games') { gameFilters.q = gameSearch.value.trim(); gamePage.value = 1 }
   void loadTab(tab)
 }
-
-function changeGamePage(page: number) {
-  gamePage.value = page
-  void loadTab('games')
-}
+function changeGamePage(page: number) { gamePage.value = page; void gameList.load() }
+function applyGameFilters() { gamePage.value = 1; gameFilters.q = gameSearch.value.trim(); void gameList.load() }
+function resetGameFilters() { gameSearch.value = ''; Object.assign(gameFilters, { q: '', categoryId: '', resourceType: '', status: '' }); gamePage.value = 1; void gameList.load() }
 
 async function deleteOrder(item: AdminOrder) {
   if (!window.confirm(`确定删除 ${item.username} 的会员工单吗？`)) return
@@ -157,6 +132,7 @@ async function loadTaxonomies() {
   const [categoryItems, tagItems] = await Promise.all([adminApi.categories(), adminApi.tags()])
   categories.value = categoryItems
   tags.value = tagItems
+  taxonomyReady.value = true
 }
 
 function openTaxonomy(kind: TaxonomyKind, item?: AdminTaxonomy) {
@@ -183,6 +159,7 @@ async function saveTaxonomy() {
     else await adminApi.createTaxonomy(taxonomyKind.value, payload)
     ElMessage.success(value.id ? '已更新' : '已创建')
     taxonomyDialog.value = false
+    gameList.invalidate()
     await loadTaxonomies()
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '保存失败')
@@ -196,173 +173,42 @@ async function deleteTaxonomy(kind: TaxonomyKind, item: AdminTaxonomy) {
   try {
     await adminApi.deleteTaxonomy(kind, item.id)
     ElMessage.success('已删除')
+    gameList.invalidate()
     await loadTaxonomies()
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '删除失败')
   }
 }
 
-function emptyGameForm(): GameForm {
-  return {
-    name: '', slug: '', coverUrl: '', description: '', descriptionFormat: 'markdown', minConfig: [], minConfigFields: emptyConfigFields(), categoryId: 0,
-    resourceType: 'free', resourceStatus: 'available', status: 'draft', publishAt: new Date().toISOString().slice(0, 10),
-    tagIds: [], downloads: [],
-  }
-}
-
-function emptyConfigFields(): ConfigFields {
-  return { os: '', cpu: '', memory: '', gpu: '', storage: '', other: '' }
-}
-
-function parseConfigFields(items: string[]): ConfigFields {
-  const fields = emptyConfigFields()
-  for (const item of items) {
-    const separator = item.search(/[:：]/)
-    if (separator < 0) {
-      fields.other = [fields.other, item].filter(Boolean).join('\n')
-      continue
-    }
-    const label = item.slice(0, separator).trim()
-    const value = item.slice(separator + 1).trim()
-    const key: ConfigKey = label.includes('操作系统') ? 'os'
-      : label.includes('处理器') || label.toLowerCase().includes('cpu') ? 'cpu'
-        : label.includes('内存') ? 'memory'
-          : label.includes('显卡') || label.toLowerCase().includes('gpu') ? 'gpu'
-            : label.includes('存储') || label.includes('硬盘') ? 'storage' : 'other'
-    fields[key] = [fields[key], value].filter(Boolean).join('\n')
-  }
-  return fields
-}
-
-function serializeConfigFields(fields: ConfigFields) {
-  return CONFIG_FIELDS.map((field) => {
-    const value = fields[field.key].trim()
-    return value ? `${field.label.replace('（CPU）', '')}：${value}` : ''
-  }).filter(Boolean)
-}
-
 function openNewGame() {
-  gameForm.value = emptyGameForm()
+  detailController?.abort()
+  openingGameId.value = null
+  editingGame.value = null
   gameDialog.value = true
 }
-
 async function openEditGame(id: number) {
+  detailController?.abort()
+  const controller = new AbortController()
+  detailController = controller
+  openingGameId.value = id
   try {
-    const item = await adminApi.game(id)
-    gameForm.value = {
-      id: item.id,
-      name: item.name,
-      slug: item.slug,
-      coverUrl: item.cover_url,
-      description: item.description,
-      descriptionFormat: item.description_format ?? 'plain',
-      minConfig: JSON.parse(item.min_config) as string[],
-      minConfigFields: parseConfigFields(JSON.parse(item.min_config) as string[]),
-      categoryId: item.category_id,
-      resourceType: item.resource_type,
-      resourceStatus: item.resource_status,
-      status: item.status,
-      publishAt: item.publish_at,
-      tagIds: item.tagIds,
-      downloads: item.downloads,
-    }
+    const item = await adminApi.game(id, AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]))
+    if (controller.signal.aborted) return
+    editingGame.value = item
     gameDialog.value = true
   } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '游戏详情加载失败')
-  }
+    if (!controller.signal.aborted) ElMessage.error(error instanceof ApiError ? error.message : '游戏详情加载失败，请重试')
+  } finally { if (detailController === controller) openingGameId.value = null }
 }
-
-function addDownload() {
-  gameForm.value.downloads.push({ provider: '', label: '', url: '', sort: gameForm.value.downloads.length * 10 })
-}
-
-async function uploadCover(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  input.value = ''
-  await uploadCoverFile(file)
-}
-
-async function uploadCoverFile(file: File) {
-  if (uploadingCover.value || savingGame.value) return
-  const controller = new AbortController()
-  coverController = controller
-  const form = gameForm.value
-  uploadingCover.value = true
-  coverError.value = ''
-  failedCover.value = undefined
-  try {
-    const result = await uploadImage(file, 'cover', controller.signal)
-    if (controller.signal.aborted || gameForm.value !== form || !gameDialog.value) return
-    form.coverUrl = result.url
-    ElMessage.success('封面上传成功')
-  } catch (error) {
-    if (controller.signal.aborted) return
-    coverError.value = error instanceof Error ? error.message : '封面上传失败，请重试'
-    failedCover.value = file
-  } finally {
-    if (coverController === controller) {
-      uploadingCover.value = false
-      coverController = undefined
-    }
-  }
-}
-
-function previewConversion() {
-  convertedDescription.value = plainToMarkdown(gameForm.value.description)
-  if (convertedDescription.value.length > 30000) { ElMessage.error('转换后超过 30000 字符，请先精简介绍'); return }
-  convertingDescription.value = true
-}
-
-function applyConversion() {
-  gameForm.value.description = convertedDescription.value
-  gameForm.value.descriptionFormat = 'markdown'
-  convertingDescription.value = false
-}
-
-async function saveGame() {
-  if (savingGame.value || uploadingCover.value || uploadingContent.value) return
-  const value = gameForm.value
-  value.minConfig = serializeConfigFields(value.minConfigFields)
-  if (!value.name || !value.slug || !value.coverUrl || !value.description || !value.categoryId || !value.minConfig.length) {
-    ElMessage.error('请完整填写游戏名称、slug、封面、分类、介绍和最低配置')
-    return
-  }
-  if (value.description.trim().length < 10 || value.description.length > 30000) {
-    ElMessage.error('游戏介绍须为 10～30000 字符')
-    return
-  }
-  savingGame.value = true
-  try {
-    const payload: GamePayload = {
-      name: value.name, slug: value.slug, coverUrl: value.coverUrl, description: value.description,
-      descriptionFormat: value.descriptionFormat,
-      minConfig: value.minConfig, categoryId: Number(value.categoryId), resourceType: value.resourceType,
-      resourceStatus: value.resourceStatus, status: value.status, publishAt: value.publishAt || null,
-      tagIds: value.tagIds.map(Number), downloads: value.downloads.map((item, index) => ({ ...item, sort: Number(item.sort ?? index * 10) })),
-    }
-    if (value.id) await adminApi.updateGame(value.id, payload)
-    else await adminApi.createGame(payload)
-    ElMessage.success(value.id ? '游戏已更新' : '游戏已创建')
-    gameDialog.value = false
-    await loadTab('games')
-  } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '保存失败')
-  } finally {
-    savingGame.value = false
-  }
-}
-
+function gameSaved() { gameDialog.value = false; gameList.invalidate(); void loadTab('games', true) }
 async function deleteGame(item: AdminGame) {
-  if (!window.confirm(`确定下架并删除“${item.name}”吗？`)) return
+  if (!window.confirm('确定下架并删除“' + item.name + '”吗？')) return
   try {
     await adminApi.deleteGame(item.id)
     ElMessage.success('游戏已删除')
-    await loadTab('games')
-  } catch (error) {
-    ElMessage.error(error instanceof ApiError ? error.message : '删除失败')
-  }
+    gameList.invalidate()
+    await loadTab('games', true)
+  } catch (error) { ElMessage.error(error instanceof ApiError ? error.message : '删除失败') }
 }
 
 async function reviewOrder(order: AdminOrder, status: 'approved' | 'rejected') {
@@ -406,27 +252,36 @@ async function saveUser(user: AdminUser) {
 
 <template>
   <section class="admin-page">
-    <div class="container admin-shell">
+    <div class="admin-shell">
       <aside class="admin-sidebar">
-        <div><span class="eyebrow">ADMIN</span><h1>管理后台</h1></div>
-        <button v-for="tab in tabs" :key="tab.value" :class="{ active: activeTab === tab.value }" @click="loadTab(tab.value)"><component :is="tab.icon" :size="18" />{{ tab.label }}</button>
+        <RouterLink to="/admin" class="admin-brand"><span class="admin-brand-mark">游</span><span><strong>游浪</strong><small>管理后台</small></span></RouterLink>
+        <span class="admin-nav-label">工作空间</span>
+        <nav aria-label="后台导航"><button v-for="tab in tabs" :key="tab.value" :class="{ active: activeTab === tab.value }" :aria-current="activeTab === tab.value ? 'page' : undefined" @click="loadTab(tab.value)"><component :is="tab.icon" :size="18" /><span>{{ tab.label }}</span><span v-if="tab.value === 'orders' && overview.pendingOrders" class="admin-nav-count">{{ overview.pendingOrders }}</span><span v-if="tab.value === 'feedback' && overview.openFeedback" class="admin-nav-count">{{ overview.openFeedback }}</span></button></nav>
+        <RouterLink to="/" class="admin-back-link"><ArrowUpRight :size="17" />回到网站</RouterLink>
       </aside>
-
+      <div class="admin-workspace">
+      <header class="admin-topbar"><div class="admin-breadcrumb"><span>管理后台</span><ChevronRight :size="14" /><strong>{{ tabs.find(tab => tab.value === activeTab)?.label }}</strong></div><div class="admin-topbar-actions"><button class="icon-button" :aria-label="theme.isDark ? '切换到日间模式' : '切换到夜间模式'" @click="theme.toggle"><Sun v-if="theme.isDark" :size="18" /><Moon v-else :size="18" /></button><span class="admin-avatar">{{ auth.user?.username?.slice(0, 1) }}</span><span class="admin-username">{{ auth.user?.username }}</span></div></header>
       <main class="admin-content">
-        <div class="admin-toolbar"><div><h2>{{ tabs.find((tab) => tab.value === activeTab)?.label }}</h2><p>管理站点数据与待办事项。</p></div><button class="icon-button" title="刷新" @click="loadTab(activeTab)"><RefreshCw :size="18" /></button></div>
+        <div class="admin-toolbar"><div><h1>{{ tabs.find((tab) => tab.value === activeTab)?.label }}</h1><p>{{ tabDescriptions[activeTab] }}</p></div><div class="admin-heading-actions"><button class="icon-button" title="刷新" aria-label="刷新" @click="loadTab(activeTab, true)"><RefreshCw :size="18" /></button><button v-if="activeTab === 'games'" class="button button-primary" :disabled="!taxonomyReady" @click="openNewGame"><Plus :size="17" />新增游戏</button></div></div>
         <div v-if="loading" class="empty-state compact"><p>正在加载...</p></div>
-
-        <div v-else-if="activeTab === 'overview'" class="admin-stats">
+        <div v-else-if="loadError" class="admin-load-error" role="alert"><p>{{ loadError }}</p><button class="button button-secondary button-small" @click="loadTab(activeTab, true)">重新加载</button></div>
+        <template v-else-if="activeTab === 'overview'">
+        <div class="admin-stats">
           <button class="admin-stat-card" @click="loadTab('users')"><Users :size="22" /><span>用户</span><strong>{{ overview.users }}</strong></button>
           <button class="admin-stat-card" @click="loadTab('games')"><Gamepad2 :size="22" /><span>游戏</span><strong>{{ overview.games }}</strong></button>
           <button class="admin-stat-card" @click="loadTab('orders')"><ClipboardList :size="22" /><span>待审工单</span><strong>{{ overview.pendingOrders }}</strong></button>
           <button class="admin-stat-card" @click="loadTab('feedback')"><MessageSquareText :size="22" /><span>待处理反馈</span><strong>{{ overview.openFeedback }}</strong></button>
         </div>
+        <div class="admin-overview-grid"><section class="admin-surface admin-todos"><div class="admin-card-heading"><h2>待办事项</h2><span>及时响应每一位玩家</span></div><button @click="loadTab('orders')"><span class="admin-todo-icon"><ClipboardList :size="21" /></span><span><strong>会员工单</strong><small>{{ overview.pendingOrders ? '有待审核的会员申请' : '当前没有待审核的申请' }}</small></span><b>{{ overview.pendingOrders }}</b><ChevronRight :size="16" /></button><button @click="loadTab('feedback')"><span class="admin-todo-icon"><MessageSquareText :size="21" /></span><span><strong>玩家反馈</strong><small>{{ overview.openFeedback ? '有反馈等待跟进处理' : '当前没有待处理的反馈' }}</small></span><b>{{ overview.openFeedback }}</b><ChevronRight :size="16" /></button></section><section class="admin-surface admin-shortcuts"><div class="admin-card-heading"><h2>内容管理</h2><span>让内容更容易被发现</span></div><button @click="loadTab('games')"><Gamepad2 :size="20" /><span><strong>管理游戏资源</strong><small>更新图文介绍与下载来源</small></span><ArrowUpRight :size="18" /></button><button @click="loadTab('taxonomy')"><Tags :size="20" /><span><strong>整理分类与标签</strong><small>维护清晰的游戏分类</small></span><ArrowUpRight :size="18" /></button></section></div>
+        </template>
 
         <template v-else-if="activeTab === 'games'">
-          <div class="admin-actions"><form class="admin-search" @submit.prevent="searchTab('games')"><input v-model="gameSearch" placeholder="搜索游戏名称或 slug" /><button class="button button-secondary button-small" type="submit">搜索</button></form><button class="button button-primary" @click="openNewGame"><Plus :size="17" />新增游戏</button></div>
-          <div class="admin-table-wrap"><table class="admin-table hoverable-table"><thead><tr><th>游戏</th><th>分类</th><th>权限</th><th>发布状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in games" :key="item.id"><td><div class="admin-game-cell"><img :src="item.cover_url" alt="" /><div><strong>{{ item.name }}</strong><small>{{ item.slug }}</small></div></div></td><td>{{ item.category }}</td><td>{{ item.resource_type === 'free' ? '免费' : '会员' }}</td><td>{{ gameStatusLabels[item.status] }}</td><td><div class="row-actions"><button @click="openEditGame(item.id)">编辑</button><button class="danger" title="删除" @click="deleteGame(item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
-          <ElPagination v-if="gameTotal > gamePageSize" class="results-pagination" background layout="prev, pager, next" :current-page="gamePage" :page-size="gamePageSize" :total="gameTotal" @current-change="changeGamePage" />
+          <section class="admin-surface game-list-surface">
+          <form class="admin-game-filters" aria-label="游戏筛选" @submit.prevent="searchTab('games')"><div class="admin-search"><Search :size="17" /><input v-model="gameSearch" aria-label="搜索游戏" maxlength="100" placeholder="搜索游戏名称或 slug" /><button type="submit">搜索</button></div><label class="admin-filter"><span>游戏分类</span><select v-model="gameFilters.categoryId" @change="applyGameFilters"><option value="">全部分类</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><label class="admin-filter"><span>资源权限</span><select v-model="gameFilters.resourceType" @change="applyGameFilters"><option value="">全部权限</option><option value="free">免费资源</option><option value="member">会员资源</option></select></label><label class="admin-filter"><span>发布状态</span><select v-model="gameFilters.status" @change="applyGameFilters"><option value="">全部状态</option><option value="draft">草稿</option><option value="published">已发布</option><option value="offline">已下架</option></select></label><button v-if="activeFilterCount" class="admin-reset" type="button" @click="resetGameFilters"><X :size="14" />重置</button></form>
+          <div v-if="gamesError" class="admin-load-error" role="alert"><p>{{ gamesError }}</p><button class="button button-secondary button-small" @click="gameList.load(true)">重新加载</button></div>
+          <div v-else class="admin-table-wrap" :aria-busy="gamesLoading"><table class="admin-table hoverable-table game-list-table"><thead><tr><th>游戏</th><th>分类</th><th>权限</th><th>发布状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-if="gamesLoading"><td colspan="5" class="admin-table-empty"><RefreshCw :size="22" /><p>正在加载游戏…</p></td></tr><tr v-else-if="!games.length"><td colspan="5" class="admin-table-empty"><SlidersHorizontal :size="26" /><h3>{{ activeFilterCount ? '没有符合条件的游戏' : '还没有游戏资源' }}</h3><p>{{ activeFilterCount ? '试试调整筛选条件，或清空后重新搜索。' : '点击“新增游戏”，创建第一份游戏内容。' }}</p><button v-if="activeFilterCount" type="button" class="button button-secondary button-small" @click="resetGameFilters">清空筛选</button></td></tr><template v-else><tr v-for="item in games" :key="item.id"><td><div class="admin-game-cell"><img :src="item.cover_url" alt="" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.slug }}</small></div></div></td><td><span class="admin-category-name">{{ item.category }}</span></td><td><span :class="['admin-access', item.resource_type]">{{ item.resource_type === 'free' ? '免费' : '会员' }}</span></td><td><span :class="['admin-status', item.status]">{{ gameStatusLabels[item.status] }}</span></td><td><div class="row-actions"><button :disabled="openingGameId !== null" @click="openEditGame(item.id)">{{ openingGameId === item.id ? '加载中…' : '编辑' }}</button><button class="danger" :aria-label="`删除${item.name}`" title="删除" @click="deleteGame(item)"><Trash2 :size="16" /></button></div></td></tr></template></tbody></table></div>
+          <div class="admin-pagination"><span aria-live="polite">共 {{ gameTotal }} 个游戏<span v-if="activeFilterCount"> · 已筛选</span></span><ElPagination v-if="gameTotal > gamePageSize" background layout="prev, pager, next" :pager-count="5" :current-page="gamePage" :page-size="gamePageSize" :total="gameTotal" @current-change="changeGamePage" /></div>
+          </section>
         </template>
 
         <template v-else-if="activeTab === 'taxonomy'">
@@ -459,35 +314,11 @@ async function saveUser(user: AdminUser) {
           <div class="admin-table-wrap"><table class="admin-table hoverable-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>会员</th><th>到期时间</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-for="item in users" :key="item.id"><td><strong>{{ item.username }}</strong><small class="table-subline">{{ formatDateTime(item.created_at) }}</small></td><td><select v-model="item.role"><option value="user">用户</option><option value="admin">管理员</option></select></td><td><select v-model="item.status"><option value="active">启用</option><option value="disabled">禁用</option></select></td><td><select v-model="item.member_type"><option value="none">普通</option><option value="monthly">月度</option><option value="lifetime">终身</option></select></td><td><input v-if="item.member_type === 'monthly'" v-model="userExpiryValues[item.id]" type="datetime-local" /><span v-else>-</span></td><td><div class="row-actions"><button class="button button-secondary button-small" @click="saveUser(item)">保存</button><button class="danger-text" title="删除用户" @click="deleteUser(item)"><Trash2 :size="16" /></button></div></td></tr></tbody></table></div>
         </template>
       </main>
+      </div>
     </div>
   </section>
 
-  <el-dialog v-model="gameDialog" :title="gameForm.id ? '编辑游戏' : '新增游戏'" width="min(1100px, 96vw)" class="game-editor-dialog" destroy-on-close :close-on-click-modal="false" :show-close="!savingGame" :close-on-press-escape="!savingGame">
-    <form class="game-editor" @submit.prevent="saveGame">
-      <label>游戏名称<input v-model="gameForm.name" maxlength="100" required /></label>
-      <label>Slug<input v-model="gameForm.slug" maxlength="100" placeholder="example-game" required /></label>
-      <label class="wide">封面地址<div class="cover-input-row"><input v-model="gameForm.coverUrl" required :disabled="uploadingCover || savingGame" /><label class="button button-secondary upload-button"><Upload :size="16" />{{ uploadingCover ? '上传中...' : '上传封面' }}<input type="file" accept="image/jpeg,image/png,image/webp" :disabled="uploadingCover || savingGame" @change="uploadCover" /></label></div></label>
-      <div v-if="coverError" class="wide cover-upload-error" role="alert">{{ coverError }}<button v-if="failedCover" type="button" class="button button-secondary button-small" @click="uploadCoverFile(failedCover)">重试封面上传</button></div>
-      <img v-if="gameForm.coverUrl" :src="gameForm.coverUrl" alt="封面预览" class="cover-preview" />
-      <label>分类<select v-model.number="gameForm.categoryId" required><option :value="0" disabled>请选择</option><option v-for="item in categories.filter((entry) => entry.status === 'active')" :key="item.id" :value="item.id">{{ item.name }}</option></select></label>
-      <label>资源权限<select v-model="gameForm.resourceType"><option value="free">免费</option><option value="member">会员</option></select></label>
-      <label>资源状态<select v-model="gameForm.resourceStatus"><option value="available">可用</option><option value="checking">检查中</option><option value="unavailable">不可用</option></select></label>
-      <label>发布状态<select v-model="gameForm.status"><option value="draft">草稿</option><option value="published">发布</option><option value="offline">下架</option></select></label>
-      <label>发布日期<input v-model="gameForm.publishAt" type="date" /></label>
-      <MarkdownEditor v-if="gameDialog && gameForm.descriptionFormat === 'markdown'" v-model="gameForm.description" class="wide" :disabled="savingGame" @uploading="uploadingContent = $event" />
-      <div v-else-if="gameForm.descriptionFormat === 'plain'" class="wide legacy-description"><label for="legacy-description">游戏介绍（纯文本）</label><textarea id="legacy-description" v-model="gameForm.description" rows="7" maxlength="30000" required></textarea><p>已有介绍保留原来的显示方式。转换后可以使用标题、列表和图片，保存游戏后生效。</p><button type="button" class="button button-secondary button-small" :disabled="savingGame" @click="previewConversion">转换为 Markdown</button></div>
-      <fieldset class="wide config-editor"><legend>最低配置</legend><label v-for="field in CONFIG_FIELDS" :key="field.key">{{ field.label }}<input v-model="gameForm.minConfigFields[field.key]" :placeholder="field.placeholder" maxlength="200" /></label><p>至少填写一项；每个字段可填写多行内容。</p></fieldset>
-      <fieldset class="wide"><legend>标签</legend><label v-for="item in tags.filter((entry) => entry.status === 'active')" :key="item.id" class="tag-option"><input v-model="gameForm.tagIds" type="checkbox" :value="item.id" />{{ item.name }}</label></fieldset>
-      <fieldset class="wide download-editor"><legend>下载地址</legend><div v-for="(item, index) in gameForm.downloads" :key="index" class="download-editor-row"><input v-model="item.provider" placeholder="网盘名称" /><input v-model="item.label" placeholder="资源说明" /><input v-model="item.url" type="url" placeholder="https://..." /><button type="button" class="icon-button" title="移除" @click="gameForm.downloads.splice(index, 1)"><Trash2 :size="17" /></button></div><button type="button" class="button button-secondary button-small" @click="addDownload"><Plus :size="16" />添加地址</button></fieldset>
-    </form>
-    <template #footer><el-button :disabled="savingGame" @click="gameDialog = false">取消</el-button><el-button type="primary" :loading="savingGame" :disabled="uploadingCover || uploadingContent" @click="saveGame">保存游戏</el-button></template>
-  </el-dialog>
-
-  <el-dialog v-model="convertingDescription" title="转换介绍预览" width="min(800px, 94vw)" append-to-body>
-    <p class="dialog-note">特殊符号已转义。确认预览后，可继续编辑并插入图片。</p>
-    <MarkdownContent :content="convertedDescription" />
-    <template #footer><el-button @click="convertingDescription = false">取消</el-button><el-button type="primary" @click="applyConversion">使用 Markdown</el-button></template>
-  </el-dialog>
+  <AdminGameEditor v-if="gameDialog" :game="editingGame" :categories="categories" :tags="tags" @close="gameDialog = false" @saved="gameSaved" />
 
   <el-dialog v-model="taxonomyDialog" :title="`${taxonomyForm.id ? '编辑' : '新增'}${taxonomyKind === 'categories' ? '分类' : '标签'}`" width="min(480px, 94vw)">
     <form class="taxonomy-form" @submit.prevent="saveTaxonomy">

@@ -228,20 +228,30 @@ const gameSchema = z.object({
 
 const adminGamesQuerySchema = z.object({
   q: z.string().trim().max(100).optional().default(''),
-  page: z.coerce.number().int().min(1).optional().default(1),
+  page: z.coerce.number().int().min(1).max(100000).optional().default(1),
+  categoryId: z.coerce.number().int().positive().max(2147483647).optional(),
+  resourceType: z.enum(['free', 'member']).optional(),
+  status: z.enum(['draft', 'published', 'offline']).optional(),
 })
 
 admin.get('/games', async (context) => {
   const parsed = adminGamesQuerySchema.safeParse(context.req.query())
   if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '分页参数无效。')
-  const { q, page } = parsed.data
+  const { q, categoryId, resourceType, status } = parsed.data
   const pageSize = 10
-  const offset = (page - 1) * pageSize
-  const filters = "g.deleted_at IS NULL AND (? = '' OR g.name LIKE ? OR g.slug LIKE ?)"
-  const bindings = [q, `%${q}%`, `%${q}%`]
+  const conditions = ['g.deleted_at IS NULL']
+  const bindings: Array<string | number> = []
+  if (q) { conditions.push('(g.name LIKE ? OR g.slug LIKE ?)'); bindings.push(`%${q}%`, `%${q}%`) }
+  if (categoryId) { conditions.push('g.category_id = ?'); bindings.push(categoryId) }
+  if (resourceType) { conditions.push('g.resource_type = ?'); bindings.push(resourceType) }
+  if (status) { conditions.push('g.status = ?'); bindings.push(status) }
+  const filters = conditions.join(' AND ')
   const totalRow = await context.env.DB.prepare(`
     SELECT COUNT(*) AS total FROM games g JOIN categories c ON c.id = g.category_id WHERE ${filters}
   `).bind(...bindings).first<{ total: number }>()
+  const total = totalRow?.total ?? 0
+  const page = Math.min(parsed.data.page, Math.max(1, Math.ceil(total / pageSize)))
+  const offset = (page - 1) * pageSize
   const result = await context.env.DB.prepare(`
     SELECT g.id, g.name, g.slug, g.cover_url, g.resource_type, g.resource_status, g.status, g.publish_at,
            c.name AS category FROM games g JOIN categories c ON c.id = g.category_id
@@ -249,7 +259,7 @@ admin.get('/games', async (context) => {
   `).bind(...bindings, pageSize, offset).all()
   return context.json({ ok: true, data: {
     games: result.results,
-    pagination: { page, pageSize, total: totalRow?.total ?? 0 },
+    pagination: { page, pageSize, total },
   } })
 })
 

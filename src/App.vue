@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import AppHeader from '@/components/AppHeader.vue'
+import { useRoute } from 'vue-router'
+const route = useRoute()
 
 function disableLeavingPage(element: Element) {
   element.setAttribute('inert', '')
@@ -14,7 +16,7 @@ function enablePage(element: Element) {
 
 <template>
   <div class="app-shell">
-    <AppHeader />
+    <AppHeader v-if="route.path !== '/admin'" />
     <main class="route-stage">
       <RouterView v-slot="{ Component, route }">
         <Transition name="page" @before-leave="disableLeavingPage" @before-enter="enablePage" @leave-cancelled="enablePage">
@@ -24,7 +26,7 @@ function enablePage(element: Element) {
         </Transition>
       </RouterView>
     </main>
-    <footer class="site-footer">
+    <footer v-if="route.path !== '/admin'" class="site-footer">
       <div class="container footer-inner">
         <div>
           <img src="/assets/brand/logo.png" alt="游浪" class="footer-logo" />

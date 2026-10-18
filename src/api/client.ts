@@ -61,6 +61,7 @@ export type AdminGame = {
   publish_at: string | null; category: string
 }
 export type AdminGameList = { games: AdminGame[]; pagination: Pagination }
+export type AdminGamesQuery = { q?: string; page?: number; categoryId?: number; resourceType?: 'free' | 'member'; status?: AdminGame['status'] }
 export type AdminGameDetail = {
   id: number; name: string; slug: string; cover_url: string; description: string; min_config: string
   description_format: DescriptionFormat
@@ -156,12 +157,12 @@ export const adminApi = {
   feedback: (q = '') => apiRequest<AdminFeedback[]>(`/admin/feedback${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   updateFeedback: (id: number, status: FeedbackItem['status'], adminReply: string) => apiRequest<null>(`/admin/feedback/${id}`, { method: 'PATCH', body: JSON.stringify({ status, adminReply }) }),
   deleteFeedback: (id: number) => apiRequest<null>(`/admin/feedback/${id}`, { method: 'DELETE' }),
-  games: (q = '', page = 1) => {
-    const params = new URLSearchParams({ page: String(page) })
-    if (q) params.set('q', q)
-    return apiRequest<AdminGameList>(`/admin/games?${params}`)
+  games: (query: AdminGamesQuery = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value))
+    return apiRequest<AdminGameList>(`/admin/games?${params}`, { signal })
   },
-  game: (id: number) => apiRequest<AdminGameDetail>(`/admin/games/${id}`),
+  game: (id: number, signal?: AbortSignal) => apiRequest<AdminGameDetail>(`/admin/games/${id}`, { signal }),
   createGame: (payload: GamePayload) => apiRequest<{ id: number }>('/admin/games', { method: 'POST', body: JSON.stringify(payload) }),
   updateGame: (id: number, payload: GamePayload) => apiRequest<null>(`/admin/games/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteGame: (id: number) => apiRequest<null>(`/admin/games/${id}`, { method: 'DELETE' }),
