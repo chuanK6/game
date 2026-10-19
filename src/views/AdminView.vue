@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useAdminGames } from '@/composables/useAdminGames'
+import { withRequestTimeout } from '@/utils/requestTimeout'
 import AdminGameEditor from '@/components/AdminGameEditor.vue'
 import '@/styles/admin.css'
 import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Users, ArrowUpRight, ChevronRight, Moon, Sun, Search, SlidersHorizontal, X, House } from 'lucide-vue-next'
@@ -194,7 +195,7 @@ async function openEditGame(id: number) {
   detailController = controller
   openingGameId.value = id
   try {
-    const item = await adminApi.game(id, AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]))
+    const item = await withRequestTimeout(signal => adminApi.game(id, signal), 15000, controller.signal)
     if (controller.signal.aborted) return
     editingGame.value = item
     gameDialog.value = true

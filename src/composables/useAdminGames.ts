@@ -1,5 +1,6 @@
 import { onScopeDispose, reactive, ref } from 'vue'
 import { adminApi, type AdminGame, type AdminGameList, type AdminGamesQuery } from '@/api/client'
+import { withRequestTimeout } from '@/utils/requestTimeout'
 
 export function useAdminGames() {
   const games = ref<AdminGame[]>([])
@@ -31,7 +32,7 @@ export function useAdminGames() {
     controller = active
     loading.value = true
     try {
-      const result = await adminApi.games(request, AbortSignal.any([active.signal, AbortSignal.timeout(15000)]))
+      const result = await withRequestTimeout(signal => adminApi.games(request, signal), 15000, active.signal)
       if (version !== generation) return
       apply(result)
       cache.set(JSON.stringify({ ...request, page: result.pagination.page }), { result, expires: Date.now() + 30000 })

@@ -2,6 +2,14 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Redirect before the app loads, including pages served from a browser cache.
+      if (location.protocol === 'http:' && location.hostname === 'youlang.cc.cd') {
+        const secureUrl = new URL(location.href)
+        secureUrl.protocol = 'https:'
+        location.replace(secureUrl.href)
+      }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0788c7" />
     <script>

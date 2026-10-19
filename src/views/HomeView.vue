@@ -5,6 +5,7 @@ import { ArrowRight, Search, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import GameCard from '@/components/GameCard.vue'
 import { getGames } from '@/api/client'
 import type { GameSummary } from '@/types/game'
+import { withRequestTimeout } from '@/utils/requestTimeout'
 
 const router = useRouter()
 const keyword = ref('')
@@ -30,7 +31,7 @@ async function loadHome() {
   loading.value = true
   loadError.value = ''
   try {
-    const gameResult = await getGames({ pageSize: 12 }, AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    const gameResult = await withRequestTimeout(signal => getGames({ pageSize: 12 }, signal), 15000, request.signal)
     if (request.signal.aborted || request !== listRequest || unmounted) return
     latestGames.value = gameResult.games
   } catch {

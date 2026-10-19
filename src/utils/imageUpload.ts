@@ -1,4 +1,5 @@
 import { adminApi } from '@/api/client'
+import { withRequestTimeout } from './requestTimeout'
 
 export async function prepareImage(file: File): Promise<File> {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('仅支持 JPG、PNG、WebP 图片')
@@ -24,5 +25,5 @@ export async function prepareImage(file: File): Promise<File> {
 export async function uploadImage(file: File, purpose: 'cover' | 'content', signal?: AbortSignal) {
   const prepared = await prepareImage(file)
   if (signal?.aborted) throw new DOMException('Upload aborted', 'AbortError')
-  return adminApi.uploadImage(prepared, purpose, signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000))
+  return withRequestTimeout(active => adminApi.uploadImage(prepared, purpose, active), 60000, signal)
 }

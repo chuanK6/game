@@ -1,5 +1,6 @@
 import type { DescriptionFormat, DownloadSource, Game, GameSummary, Taxonomy } from '@/types/game'
 import { invalidateCatalogCache, type CatalogFilters } from '@/utils/catalogCache'
+import { withRequestTimeout } from '@/utils/requestTimeout'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -127,7 +128,7 @@ export const catalogApi = {
 }
 
 export const authApi = {
-  me: () => apiRequest<CurrentUser | null>('/auth/me', { signal: AbortSignal.timeout(8000) }),
+  me: () => withRequestTimeout(signal => apiRequest<CurrentUser | null>('/auth/me', { signal }), 8000),
   login: (username: string, password: string) => apiRequest<CurrentUser>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   register: (username: string, password: string) => apiRequest<CurrentUser>('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
   logout: () => apiRequest<null>('/auth/logout', { method: 'POST' }),

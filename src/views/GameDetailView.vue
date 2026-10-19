@@ -8,6 +8,7 @@ import type { DownloadSource, Game } from '@/types/game'
 import { useAuthStore } from '@/stores/auth'
 import MarkdownContent from '@/components/MarkdownContent.vue'
 import { safeCatalogPath } from '@/utils/catalogQuery'
+import { withRequestTimeout } from '@/utils/requestTimeout'
 
 const route = useRoute()
 const router = useRouter()
@@ -59,7 +60,7 @@ async function loadGame() {
   downloads.value = null
   coverFailed.value = false
   try {
-    const result = await catalogApi.game(slug, AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    const result = await withRequestTimeout(signal => catalogApi.game(slug, signal), 15000, request.signal)
     if (!disposed && !request.signal.aborted && detailRequest === request) game.value = result
   } catch (error) {
     if (disposed || request.signal.aborted || detailRequest !== request) return

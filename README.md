@@ -68,6 +68,8 @@ npm run db:migrate:remote
 
 `main` 分支已连接 Cloudflare Workers Builds。每次推送后执行 `npm run build` 和 `npx wrangler deploy`。生产资源配置位于 `wrangler.toml`。
 
+正式站点统一使用 `https://youlang.cc.cd`。所有页面与 API 先经过 Worker，生产环境的 HTTP 请求以 308 跳转至同一地址的 HTTPS，并保留路径与查询参数；HTTPS 响应设置 HSTS。前端入口也会在应用加载前将正式域名的 HTTP 地址转至 HTTPS。开发环境的 localhost、回环地址和本地 HTTP 服务保持可用。
+
 ## 图片与 Markdown
 
 - `wrangler.toml` 中的 `MEDIA` 绑定存储桶 `youlang`，`MEDIA_PUBLIC_URL` 为 `https://cdn.youlang.cc.cd`。部署账号需有该桶的访问权限；Worker 通过绑定上传，无需配置 S3 访问密钥。

@@ -39,7 +39,8 @@ type GameSummaryRow = Omit<GameRow, 'description' | 'description_format' | 'min_
 
 const app = new Hono<AppEnv>().basePath('/api')
 
-app.use('*', secureHeaders())
+// The outer site middleware applies HSTS to production HTTPS responses only.
+app.use('*', secureHeaders({ strictTransportSecurity: false }))
 app.use('*', async (context, next) => {
   const middleware = cors({
     origin: context.env.ALLOWED_ORIGIN,
@@ -430,4 +431,25 @@ function isLoopbackOrigin(value: string) {
   }
 }
 
-export default app
+// Serve pages through the Worker as well so an HTTP page redirects before login.
+const site = new Hono<AppEnv>()
+site.use('*', async (context, next) => {
+  const url = new URL(context.req.url)
+  const production = context.env.APP_ENV === 'production' && !isLoopbackOrigin(url.origin)
+  if (production) {
+    if (url.protocol === 'http:') {
+      url.protocol = 'https:'
+      return context.redirect(url.href, 308)
+    }
+  }
+  await next()
+  if (production) context.header('Strict-Transport-Security', 'max-age=31536000')
+})
+site.route('/', app)
+site.all('*', async context => {
+  if (new URL(context.req.url).pathname.startsWith('/api/')) return context.notFound()
+  const response = await context.env.ASSETS.fetch(context.req.raw)
+  return response
+})
+
+export default site

@@ -10,6 +10,7 @@ import { catalogRequest, catalogRouteQuery, normalizeCatalogQuery, type CatalogQ
 import { catalogKey, catalogRevision, readCatalogFilters, readCatalogPage, writeCatalogFilters, writeCatalogPage, invalidateCatalogCache } from '@/utils/catalogCache'
 import { beginCatalogRender, finishCatalogRender, rememberCatalogPosition } from '@/utils/catalogNavigation'
 import type { GameSummary, Taxonomy } from '@/types/game'
+import { withRequestTimeout } from '@/utils/requestTimeout'
 import '@/styles/catalog.css'
 
 const route = useRoute()
@@ -93,7 +94,7 @@ async function loadFilters(force = false) {
   if (cached) { categories.value = cached.categories; tags.value = cached.tags; years.value = cached.years; filtersLoading.value = false; return }
   filtersLoading.value = true
   try {
-    const result = await catalogApi.filters(AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    const result = await withRequestTimeout(signal => catalogApi.filters(signal), 15000, request.signal)
     if (request.signal.aborted || filterRequest !== request || leaving || disposed) return
     categories.value = result.categories
     tags.value = result.tags
@@ -162,7 +163,7 @@ async function loadGames(force = false) {
   if (cached) { games.value = cached.games; total.value = cached.pagination.total; currentPage.value = cached.pagination.page; loading.value = false; return }
   loading.value = true
   try {
-    const result = await getGames(params, AbortSignal.any([request.signal, AbortSignal.timeout(15000)]))
+    const result = await withRequestTimeout(signal => getGames(params, signal), 15000, request.signal)
     if (request.signal.aborted || request !== listRequest || route.fullPath !== path || leaving || disposed) return
     games.value = result.games
     total.value = result.pagination.total

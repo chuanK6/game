@@ -13,7 +13,10 @@ export type ConfigFields = Record<ConfigKey, string>
 export type EditorTab = 'basic' | 'introduction' | 'requirements' | 'downloads'
 export type GameForm = Omit<GamePayload, 'minConfig' | 'downloads'> & { id?: number; config: ConfigFields; downloads: Array<GamePayload['downloads'][number] & { key: string }> }
 export type FormIssue = { tab: EditorTab; field: string; message: string }
-export const blankDownload = () => ({ key: crypto.randomUUID(), provider: '', label: '', url: '', sort: 0 })
+// These keys only identify local form rows; they are never authentication tokens.
+let downloadRowId = 0
+const downloadKey = () => `download-${++downloadRowId}`
+export const blankDownload = () => ({ key: downloadKey(), provider: '', label: '', url: '', sort: 0 })
 export const hasDownload = (row: GamePayload['downloads'][number]) => Boolean(row.provider.trim() || row.label.trim() || row.url.trim())
 
 export function configFromLines(lines: string[]): ConfigFields {
@@ -38,7 +41,7 @@ export function createGameForm(game: AdminGameDetail | null): GameForm {
     resourceType: game?.resource_type ?? 'free', resourceStatus: game?.resource_status ?? 'available', status: game?.status ?? 'draft',
     publishAt: game ? game.publish_at?.slice(0, 10) ?? null : new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date()),
     tagIds: [...(game?.tagIds ?? [])],
-    downloads: game?.downloads.length ? game.downloads.map(row => ({ ...row, key: crypto.randomUUID() })) : [blankDownload()],
+    downloads: game?.downloads.length ? game.downloads.map(row => ({ ...row, key: downloadKey() })) : [blankDownload()],
   }
 }
 
