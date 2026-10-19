@@ -281,15 +281,6 @@ onBeforeUnmount(() => { disposed = true; cancelAnimationFrame(scrollFrame); cont
   <div ref="frame" class="markdown-editor-frame" :style="fullscreen ? { height: `${fullscreenHeight}px` } : undefined">
   <div ref="editor" :class="['markdown-editor', { 'is-fullscreen': fullscreen }]" @keydown.esc.stop="fullscreen = false">
     <div class="markdown-editor-chrome" @mousedown="preserveToolbarSelection">
-    <div class="markdown-editor-heading">
-      <strong>游戏介绍 <small>Markdown</small></strong>
-      <div class="markdown-modes" role="group" aria-label="介绍编辑模式">
-        <button type="button" :aria-pressed="mode === 'edit'" @click="selectMode('edit')">编辑</button>
-        <button type="button" :aria-pressed="mode === 'preview'" @click="selectMode('preview')">预览</button>
-        <button type="button" class="split-mode" :aria-pressed="mode === 'split'" @click="selectMode('split')">双栏</button>
-        <button type="button" :aria-label="fullscreen ? '退出全屏编辑' : '全屏编辑'" :title="fullscreen ? '退出全屏编辑' : '全屏编辑'" @click="toggleFullscreen"><Minimize2 v-if="fullscreen" :size="16" /><Maximize2 v-else :size="16" /></button>
-      </div>
-    </div>
     <div class="markdown-toolbar" role="toolbar" aria-label="Markdown 工具栏">
       <div class="markdown-tool-group" role="group" aria-label="编辑历史">
         <button type="button" aria-label="撤销" title="撤销 · Ctrl/⌘ Z" :disabled="!canUndo" @click="travelHistory(-1)"><Undo2 :size="17" /></button>
@@ -316,12 +307,18 @@ onBeforeUnmount(() => { disposed = true; cancelAnimationFrame(scrollFrame); cont
       </div>
       <input ref="fileInput" type="file" class="visually-hidden" accept="image/jpeg,image/png,image/webp" multiple :disabled="busy" aria-label="上传介绍图片" @change="chooseFiles" />
     </div>
+    <div class="markdown-modes" role="group" aria-label="介绍编辑模式">
+      <button type="button" :aria-pressed="mode === 'edit'" @click="selectMode('edit')">编辑</button>
+      <button type="button" :aria-pressed="mode === 'preview'" @click="selectMode('preview')">预览</button>
+      <button type="button" class="split-mode" :aria-pressed="mode === 'split'" @click="selectMode('split')">双栏</button>
+      <button type="button" :aria-label="fullscreen ? '退出全屏编辑' : '全屏编辑'" :title="fullscreen ? '退出全屏编辑' : '全屏编辑'" @click="toggleFullscreen"><Minimize2 v-if="fullscreen" :size="16" /><Maximize2 v-else :size="16" /></button>
+    </div>
     </div>
     <div :class="['markdown-editor-panes', `mode-${mode}`]">
       <textarea ref="textarea" class="markdown-source" :value="modelValue" :readonly="busy" maxlength="30000" aria-label="游戏介绍 Markdown" placeholder="输入游戏介绍，支持标题、列表、表格和图片。可粘贴截图或拖入图片。" @beforeinput="beforeInput" @input="input" @keydown="keyboardShortcut" @select="rememberSelection" @click="rememberSelection" @keyup="rememberSelection" @blur="rememberSelection" @paste="paste" @dragover.prevent @drop="drop"></textarea>
       <div ref="preview" class="markdown-preview" aria-label="游戏介绍预览"><MarkdownContent v-if="modelValue" :content="modelValue" /><p v-else class="markdown-placeholder">预览会显示在这里</p></div>
     </div>
-    <div class="markdown-editor-footer"><span>支持粘贴 / 拖入图片 · JPG、PNG、WebP · 每张 ≤ 5 MB</span><span>{{ modelValue.length }} / 30000</span></div>
+    <div class="markdown-editor-footer"><span>{{ modelValue.length }} / 30000</span></div>
     <div v-if="uploading" class="markdown-upload-status" role="status">{{ uploadStatus }}<button type="button" @click="cancelUpload">取消上传</button></div>
     <div v-if="failedFiles.length" class="markdown-upload-error" role="alert"><span>{{ failedFiles.length }} 张图片未插入：{{ errorText }}</span><button type="button" :disabled="busy" @click="uploadFiles([...failedFiles])">重试失败图片</button></div>
   </div>

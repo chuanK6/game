@@ -27,16 +27,15 @@
 .markdown-lightbox img { display: block; max-width: 100%; max-height: 78vh; margin: auto; object-fit: contain; }
 .markdown-editor-frame { min-width: 0; }
 .markdown-editor { min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
-.markdown-editor-chrome { flex: none; background: var(--surface); border-radius: 9px 9px 0 0; }
-.markdown-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-.markdown-editor-heading strong { color: var(--ink); font-size: 13px; }
-.markdown-editor-heading small { margin-left: 5px; font-size: 11px; color: var(--muted); font-weight: 400; }
+.markdown-editor-chrome { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--surface-raised); border-radius: 9px 9px 0 0; }
 .markdown-modes, .markdown-toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .markdown-editor button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 5px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
 .markdown-editor button:hover, .markdown-modes button[aria-pressed="true"] { background: var(--blue-soft); color: var(--blue-dark); }
 .markdown-editor button:focus-visible { outline: 2px solid var(--blue); }
 .markdown-editor button:disabled { opacity: .45; cursor: not-allowed; }
-.markdown-toolbar { padding: 6px 10px; background: var(--surface-raised); border-bottom: 1px solid var(--line); }
+.markdown-toolbar { flex: 1; min-width: min(100%, 540px); }
+.markdown-modes { flex: none; margin-left: auto; padding: 3px; border-radius: 7px; background: var(--surface-raised); }
+.markdown-modes button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px #0f172a1a; }
 .markdown-tool-group { display: flex; align-items: center; gap: 4px; }
 .markdown-tool-group + .markdown-tool-group { padding-left: 8px; margin-left: 4px; border-left: 1px solid var(--line); }
 .markdown-heading-select { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
@@ -50,7 +49,7 @@
 .mode-edit .markdown-preview, .mode-preview .markdown-source { display: none; }
 .mode-preview .markdown-preview { border-left: 0; }
 .markdown-placeholder { color: var(--muted); font-size: 13px; }
-.markdown-editor-footer { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.markdown-editor-footer { display: flex; justify-content: flex-end; padding: 5px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .markdown-upload-status, .markdown-upload-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .markdown-upload-status { color: var(--blue-dark); background: var(--blue-soft); }
 .markdown-upload-error { color: var(--danger); }
@@ -66,8 +65,6 @@
 .markdown-editor.is-fullscreen .markdown-preview { max-height: none; overflow-y: auto; }
 .game-editor .markdown-editor.is-fullscreen textarea { min-height: 0; height: 100%; resize: none; }
 @media (max-width: 680px) {
-  .markdown-editor-heading { align-items: flex-start; }
-  .markdown-editor-heading small { display: block; margin-left: 0; }
   .markdown-editor .split-mode { display: none; }
   .markdown-editor-panes.mode-split { grid-template-columns: minmax(0, 1fr); }
   .mode-split .markdown-preview { display: none; }
