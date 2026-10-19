@@ -10,24 +10,23 @@
 .catalog-filter-heading .filter-search button { display: flex; align-items: center; padding: 0; border: 0; background: transparent; color: var(--blue-dark); font-size: 12px; white-space: nowrap; }
 .catalog-filter-heading .reset-button { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; }
 .catalog-filter-heading .reset-button:hover { color: var(--blue-dark); border-color: var(--blue); }
-.catalog-filter-row { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: start; gap: 16px; padding: 14px 0; }
+.catalog-filter-row { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: center; gap: 16px; padding: 10px 0; }
 .catalog-filter-row + .catalog-filter-row { border-top: 1px solid var(--line); }
-.catalog-filter-row > strong { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); font-size: 13px; font-weight: 750; color: var(--ink); }
+.catalog-filter-row > strong { display: flex; align-items: center; gap: 4px; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); font-size: 13px; font-weight: 750; color: var(--ink); white-space: nowrap; }
 .catalog-filter-row > strong small { font-size: 10px; font-weight: 400; color: var(--muted); }
-.catalog-filter-options { min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.catalog-filter-options.expanded { max-height: none; }
+.catalog-filter-options { min-width: 0; display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 4px; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.catalog-filter-options.is-dragging, .catalog-filter-options.is-dragging button { cursor: grabbing; user-select: none; }
+.catalog-filter-options button, .catalog-filter-placeholder { flex-shrink: 0; white-space: nowrap; }
+.catalog-filter-options button svg { flex: none; }
 .catalog-filter-options button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 5px; min-width: 60px; min-height: 38px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text-secondary); font-size: 13px; line-height: 20px; box-shadow: 0 2px 3px rgba(15, 40, 58, .05); transition: color .18s, background-color .18s, border-color .18s, box-shadow .18s; }
 .catalog-filter-options button:hover:not(:disabled) { color: var(--blue-dark); border-color: var(--blue); background: var(--blue-soft); }
 .catalog-filter-options button[aria-pressed="true"], .catalog-filter-options button[aria-pressed="true"]:hover { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 650; box-shadow: 0 3px 8px color-mix(in srgb, var(--blue) 24%, transparent); }
 html.dark .catalog-filter-options button[aria-pressed="true"] { background: #147ab3; border-color: #147ab3; }
 .catalog-filter-options button:disabled { opacity: .45; cursor: not-allowed; }
-.catalog-filter-options button { max-width: 100%; overflow-wrap: anywhere; }
-.catalog-expand { display: inline-flex; align-items: center; gap: 3px; padding: 10px 0; border: 0; background: transparent; color: var(--blue-dark); font-size: 11px; white-space: nowrap; }
-.catalog-expand[aria-expanded="true"] svg { transform: rotate(180deg); }
 .catalog-filter-placeholder { padding: 8px; color: var(--muted); font-size: 12px; }
-.catalog-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 -24px -6px; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; padding: 14px 24px; background: var(--surface-raised); }
-.catalog-selected > span { font-size: 12px; font-weight: 650; color: var(--text-secondary); margin-right: 4px; }
-.catalog-selected button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; overflow-wrap: anywhere; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--blue) 24%, var(--line)); border-radius: 6px; background: var(--blue-soft); color: var(--blue-dark); font-size: 12px; }
+.catalog-selected { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0 -24px -6px; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; padding: 12px 24px; background: var(--surface-raised); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.catalog-selected > span { flex: none; white-space: nowrap; font-size: 12px; font-weight: 650; color: var(--text-secondary); margin-right: 4px; }
+.catalog-selected button { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--blue) 24%, var(--line)); border-radius: 6px; background: var(--blue-soft); color: var(--blue-dark); font-size: 12px; }
 .catalog-selected button:hover { border-color: var(--blue); }
 .catalog-selected button svg { flex: none; }
 .catalog-filters .filter-load-error { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; font-size: 12px; }
@@ -56,13 +55,11 @@ html.dark .catalog-filter-options button[aria-pressed="true"] { background: #147
   .catalog-filter-heading { flex-wrap: wrap; justify-content: space-between; gap: 12px; margin: -16px -14px 0; padding: 14px; }
   .catalog-filter-heading > span { font-size: 14px; }
   .catalog-filter-heading .filter-search { order: 3; width: 100%; margin: 0; }
-  .catalog-filter-row { grid-template-columns: 68px minmax(0, 1fr) auto; gap: 8px; padding: 12px 0; }
+  .catalog-filter-row { grid-template-columns: 68px minmax(0, 1fr); gap: 8px; padding: 8px 0; }
   .catalog-filter-row > strong { padding: 8px 6px; font-size: 11px; }
-  .catalog-filter-row > strong small { width: 100%; }
   .catalog-filter-options { gap: 6px; }
   .catalog-filter-options button { min-width: 48px; min-height: 38px; padding: 8px 10px; font-size: 11px; }
   .catalog-selected { margin: 0 -14px -4px; padding: 12px 14px; }
-  .catalog-expand { font-size: 10px; }
   .catalog-page-label { margin-left: 8px; font-size: 10px; }
   .catalog-results-actions { font-size: 10px; gap: 5px; }
   .catalog-results .results-header { gap: 5px; }

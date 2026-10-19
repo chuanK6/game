@@ -74,7 +74,8 @@ export async function readSession(context: Context<AppEnv>) {
 
   if (!row || row.status !== 'active') {
     await context.env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run()
-    deleteCookie(context, COOKIE_NAME, { path: '/' })
+    // A response for an old token can arrive after login creates a new cookie.
+    // Only explicit logout clears the browser cookie; stale reads must not erase it.
     return null
   }
 

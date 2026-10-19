@@ -34,16 +34,26 @@ export const useAuthStore = defineStore('auth', () => {
     return restorePromise
   }
 
-  async function login(username: string, password: string) {
-    user.value = await authApi.login(username, password)
-    sessionVersion += 1
+  async function confirmLogin(result: CurrentUser) {
+    const version = ++sessionVersion
+    user.value = null
+    initialized.value = false
+    const currentUser = await authApi.me()
+    if (version !== sessionVersion) return
+    if (!currentUser || currentUser.id !== result.id) {
+      initialized.value = true
+      throw new ApiError('SESSION_NOT_PERSISTED', '登录会话未能保存，请允许此网站使用 Cookie 后重试。', 401)
+    }
+    user.value = currentUser
     initialized.value = true
   }
 
+  async function login(username: string, password: string) {
+    await confirmLogin(await authApi.login(username, password))
+  }
+
   async function register(username: string, password: string) {
-    user.value = await authApi.register(username, password)
-    sessionVersion += 1
-    initialized.value = true
+    await confirmLogin(await authApi.register(username, password))
   }
 
   async function logout() {

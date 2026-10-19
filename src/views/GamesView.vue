@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { ArrowUp, Check, ChevronDown, Gamepad2, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-vue-next'
+import { ArrowUp, Check, Gamepad2, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-vue-next'
 import { ElPagination } from 'element-plus'
 import GameCard from '@/components/GameCard.vue'
 import { catalogApi, getGames } from '@/api/client'
@@ -29,15 +29,10 @@ const loading = ref(true)
 const filtersLoading = ref(true)
 const loadError = ref('')
 const filterError = ref('')
-const expanded = ref({ year: false, category: false, tags: false })
 const viewport = window.matchMedia('(max-width: 760px)')
 const isMobile = ref(viewport.matches)
 const pageSize = computed(() => isMobile.value ? 8 : 20)
 const yearsToShow = computed(() => [...new Set([...years.value, ...(selectedYear.value ? [Number(selectedYear.value)] : [])])].sort((a, b) => b - a))
-const optionLimit = computed(() => isMobile.value ? 4 : 12)
-const visibleYears = computed(() => expanded.value.year ? yearsToShow.value : yearsToShow.value.filter((year, index) => index < optionLimit.value || String(year) === selectedYear.value))
-const visibleCategories = computed(() => expanded.value.category ? categories.value : categories.value.filter((item, index) => index < optionLimit.value || item.slug === category.value))
-const visibleTags = computed(() => expanded.value.tags ? tags.value : tags.value.filter((item, index) => index < optionLimit.value || selectedTags.value.includes(item.slug)))
 const activeCount = computed(() => Number(Boolean(keyword.value.trim())) + Number(Boolean(category.value)) + selectedTags.value.length + Number(Boolean(selectedYear.value)) + Number(Boolean(resourceType.value)))
 const tagNames = computed(() => selectedTags.value.map(slug => ({ slug, name: tags.value.find(tag => tag.slug === slug)?.name ?? slug })))
 let searchTimer: number | undefined
@@ -45,6 +40,45 @@ let listRequest: AbortController | undefined
 let filterRequest: AbortController | undefined
 let leaving = false
 let disposed = false
+let filterDrag: { element: HTMLElement; pointerId: number; startX: number; scrollLeft: number; dragging: boolean } | undefined
+let draggedFilter: HTMLElement | undefined
+
+function startFilterDrag(event: PointerEvent) {
+  draggedFilter = undefined
+  filterDrag = undefined
+  const element = event.currentTarget as HTMLElement
+  if (event.pointerType !== 'mouse' || event.button !== 0 || element.scrollWidth <= element.clientWidth) return
+  filterDrag = { element, pointerId: event.pointerId, startX: event.clientX, scrollLeft: element.scrollLeft, dragging: false }
+}
+function moveFilterDrag(event: PointerEvent) {
+  const drag = filterDrag
+  if (!drag || drag.pointerId !== event.pointerId) return
+  if (!(event.buttons & 1)) { endFilterDrag(event); return }
+  const distance = event.clientX - drag.startX
+  if (!drag.dragging && Math.abs(distance) < 6) return
+  if (!drag.dragging) {
+    drag.dragging = true
+    drag.element.setPointerCapture(event.pointerId)
+    drag.element.classList.add('is-dragging')
+  }
+  event.preventDefault()
+  drag.element.scrollLeft = drag.scrollLeft - distance
+}
+function endFilterDrag(event: PointerEvent) {
+  const drag = filterDrag
+  if (!drag || drag.pointerId !== event.pointerId) return
+  filterDrag = undefined
+  if (drag.dragging) draggedFilter = drag.element
+  drag.element.classList.remove('is-dragging')
+  if (drag.element.hasPointerCapture(event.pointerId)) drag.element.releasePointerCapture(event.pointerId)
+}
+function filterClick(event: MouseEvent) {
+  if (event.detail && draggedFilter === event.currentTarget) {
+    event.preventDefault()
+    event.stopPropagation()
+    draggedFilter = undefined
+  }
+}
 
 const draftQuery = (page = 1): CatalogQuery => ({ q: keyword.value.trim().slice(0, 80), category: category.value, tags: [...selectedTags.value].sort(), year: selectedYear.value, resourceType: resourceType.value, page })
 
@@ -178,10 +212,10 @@ onBeforeUnmount(() => { disposed = true; cancelPendingWork(); stopAfterEach(); s
       <section class="filter-panel catalog-filters" aria-label="游戏筛选">
         <div class="catalog-filter-heading"><span><SlidersHorizontal :size="18" />筛选游戏</span><form class="filter-search" role="search" @submit.prevent="updateQuery()"><Search :size="17" /><input v-model="keyword" aria-label="搜索游戏名称" placeholder="输入游戏名称" maxlength="80" @input="scheduleSearch" /><button v-if="keyword" type="button" aria-label="清空关键词" @click="keyword = ''; updateQuery()"><X :size="15" /></button><button type="submit">搜索</button></form><button class="reset-button" @click="reset"><RotateCcw :size="15" />重置</button></div>
         <div v-if="filterError" class="filter-load-error" role="alert">{{ filterError }}<button @click="loadFilters(true)">重新加载筛选项</button></div>
-        <div class="catalog-filter-row"><strong id="filter-year-label">发布年份</strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-year-label" :class="{ expanded: expanded.year }"><button :aria-pressed="!selectedYear" @click="selectYear('')">全部</button><button v-for="year in visibleYears" :key="year" :aria-pressed="selectedYear === String(year)" @click="selectYear(String(year))">{{ year }}</button><span v-if="filtersLoading" class="catalog-filter-placeholder">加载中…</span></div><button v-if="yearsToShow.length > (isMobile ? 4 : 12)" class="catalog-expand" :aria-expanded="expanded.year" @click="expanded.year = !expanded.year">{{ expanded.year ? '收起' : '更多' }}<ChevronDown :size="13" /></button></div>
-        <div class="catalog-filter-row"><strong id="filter-access-label">资源权限</strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-access-label"><button :aria-pressed="!resourceType" @click="selectAccess('')">全部</button><button :aria-pressed="resourceType === 'free'" @click="selectAccess('free')">免费资源</button><button :aria-pressed="resourceType === 'member'" @click="selectAccess('member')">会员资源</button></div></div>
-        <div class="catalog-filter-row"><strong id="filter-category-label">分类</strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-category-label" :class="{ expanded: expanded.category }"><button :aria-pressed="!category" @click="selectCategory('')">全部</button><button v-for="item in visibleCategories" :key="item.slug" :aria-pressed="category === item.slug" @click="selectCategory(item.slug)">{{ item.name }}</button><span v-if="filtersLoading" class="catalog-filter-placeholder">加载中…</span></div><button v-if="categories.length > (isMobile ? 4 : 12)" class="catalog-expand" :aria-expanded="expanded.category" @click="expanded.category = !expanded.category">{{ expanded.category ? '收起' : '更多' }}<ChevronDown :size="13" /></button></div>
-        <div class="catalog-filter-row"><strong id="filter-tags-label">标签 <small>多选</small></strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-tags-label" :class="{ expanded: expanded.tags }"><button :aria-pressed="!selectedTags.length" @click="clearTags">全部</button><button v-for="tag in visibleTags" :key="tag.slug" :aria-pressed="selectedTags.includes(tag.slug)" :disabled="selectedTags.length >= 20 && !selectedTags.includes(tag.slug)" @click="toggleTag(tag.slug)"><Check v-if="selectedTags.includes(tag.slug)" :size="12" />{{ tag.name }}</button><span v-if="filtersLoading" class="catalog-filter-placeholder">加载中…</span><span v-else-if="!tags.length" class="catalog-filter-placeholder">暂无标签</span></div><button v-if="tags.length > (isMobile ? 4 : 12)" class="catalog-expand" :aria-expanded="expanded.tags" @click="expanded.tags = !expanded.tags">{{ expanded.tags ? '收起' : '更多' }}<ChevronDown :size="13" /></button></div>
+        <div class="catalog-filter-row"><strong id="filter-year-label">发布年份</strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-year-label" @pointerdown="startFilterDrag" @pointermove="moveFilterDrag" @pointerup="endFilterDrag" @pointercancel="endFilterDrag" @lostpointercapture="endFilterDrag" @click.capture="filterClick"><button :aria-pressed="!selectedYear" @click="selectYear('')">全部</button><button v-for="year in yearsToShow" :key="year" :aria-pressed="selectedYear === String(year)" @click="selectYear(String(year))">{{ year }}</button><span v-if="filtersLoading" class="catalog-filter-placeholder">加载中…</span></div></div>
+        <div class="catalog-filter-row"><strong id="filter-access-label">资源权限</strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-access-label" @pointerdown="startFilterDrag" @pointermove="moveFilterDrag" @pointerup="endFilterDrag" @pointercancel="endFilterDrag" @lostpointercapture="endFilterDrag" @click.capture="filterClick"><button :aria-pressed="!resourceType" @click="selectAccess('')">全部</button><button :aria-pressed="resourceType === 'free'" @click="selectAccess('free')">免费资源</button><button :aria-pressed="resourceType === 'member'" @click="selectAccess('member')">会员资源</button></div></div>
+        <div class="catalog-filter-row"><strong id="filter-category-label">分类</strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-category-label" @pointerdown="startFilterDrag" @pointermove="moveFilterDrag" @pointerup="endFilterDrag" @pointercancel="endFilterDrag" @lostpointercapture="endFilterDrag" @click.capture="filterClick"><button :aria-pressed="!category" @click="selectCategory('')">全部</button><button v-for="item in categories" :key="item.slug" :aria-pressed="category === item.slug" @click="selectCategory(item.slug)">{{ item.name }}</button><span v-if="filtersLoading" class="catalog-filter-placeholder">加载中…</span></div></div>
+        <div class="catalog-filter-row"><strong id="filter-tags-label">标签 <small>多选</small></strong><div class="catalog-filter-options" role="group" aria-labelledby="filter-tags-label" @pointerdown="startFilterDrag" @pointermove="moveFilterDrag" @pointerup="endFilterDrag" @pointercancel="endFilterDrag" @lostpointercapture="endFilterDrag" @click.capture="filterClick"><button :aria-pressed="!selectedTags.length" @click="clearTags">全部</button><button v-for="tag in tags" :key="tag.slug" :aria-pressed="selectedTags.includes(tag.slug)" :disabled="selectedTags.length >= 20 && !selectedTags.includes(tag.slug)" @click="toggleTag(tag.slug)"><Check v-if="selectedTags.includes(tag.slug)" :size="12" />{{ tag.name }}</button><span v-if="filtersLoading" class="catalog-filter-placeholder">加载中…</span><span v-else-if="!tags.length" class="catalog-filter-placeholder">暂无标签</span></div></div>
         <div v-if="activeCount" class="catalog-selected" aria-label="已选筛选条件"><span>已选</span><button v-if="selectedYear" @click="selectYear('')">{{ selectedYear }} 年<X :size="12" /></button><button v-if="resourceType" @click="selectAccess('')">{{ resourceType === 'free' ? '免费资源' : '会员资源' }}<X :size="12" /></button><button v-if="category" @click="selectCategory('')">{{ categories.find(item => item.slug === category)?.name ?? category }}<X :size="12" /></button><button v-for="tag in tagNames" :key="tag.slug" @click="toggleTag(tag.slug)">{{ tag.name }}<X :size="12" /></button><button v-if="keyword.trim()" @click="keyword = ''; updateQuery()">{{ keyword }}<X :size="12" /></button></div>
       </section>
       <section id="catalog-results" class="results-area catalog-results" aria-label="游戏列表" :aria-busy="loading">

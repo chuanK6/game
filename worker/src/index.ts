@@ -63,6 +63,11 @@ app.use('*', async (context, next) => {
 // Public images do not need a session or a D1 lookup.
 app.route('/media', media)
 app.use('*', async (context, next) => {
+  // Authentication and account responses must never reuse a browser/proxy cache.
+  context.header('Cache-Control', 'no-store')
+  await next()
+})
+app.use('*', async (context, next) => {
   const session = await readSession(context)
   if (session) {
     context.set('user', session.user)

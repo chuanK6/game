@@ -92,6 +92,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
+    cache: 'no-store',
     headers: init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json', ...init.headers } : init.headers,
   })
   const payload = await response.json() as SuccessResponse<T> | ErrorResponse
