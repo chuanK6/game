@@ -15,6 +15,7 @@ export type AuthUser = {
   username: string
   avatarUrl: string | null
   role: UserRole
+  isSuper: boolean
   memberType: MemberType
   memberExpireAt: string | null
   isMember: boolean

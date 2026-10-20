@@ -3,9 +3,21 @@ import { createMiddleware } from 'hono/factory'
 import { z } from 'zod'
 import { serializeUser } from './auth'
 import { uploadImage } from './media'
-import type { AppEnv } from './types'
+import type { AppEnv, AuthUser } from './types'
 
 const admin = new Hono<AppEnv>()
+
+const adminListQuerySchema = z.object({
+  q: z.string().trim().max(100).default(''),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+})
+
+async function listPagination(database: D1Database, from: string, bindings: Array<string | number>, requestedPage: number) {
+  const row = await database.prepare(`SELECT COUNT(*) AS total ${from}`).bind(...bindings).first<{ total: number }>()
+  const total = row?.total ?? 0
+  const pageSize = 10
+  return { page: Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize))), pageSize, total }
+}
 
 const requireAdmin = createMiddleware<AppEnv>(async (context, next) => {
   const user = context.get('user')
@@ -34,21 +46,50 @@ admin.get('/overview', async (context) => {
 
 type AdminUserRow = Parameters<typeof serializeUser>[0] & {
   status: 'active' | 'disabled'
+  is_super: number
   member_started_at: string | null
   created_at: string
+  last_login_at: string | null
 }
 
 admin.get('/users', async (context) => {
-  const q = String(context.req.query('q') ?? '').trim()
+  const parsed = z.object({
+    q: z.string().trim().max(100).default(''),
+    page: z.coerce.number().int().min(1).max(100000).default(1),
+    role: z.enum(['user', 'admin']).optional(),
+    status: z.enum(['active', 'disabled']).optional(),
+    memberType: z.enum(['none', 'monthly', 'lifetime']).optional(),
+  }).safeParse(context.req.query())
+  if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '筛选或分页参数无效。')
+  const { q, role, status, memberType } = parsed.data
+  const conditions = ['deleted_at IS NULL']
+  const bindings: Array<string | number> = []
+  if (q) { conditions.push('username LIKE ?'); bindings.push(`%${q}%`) }
+  if (status) { conditions.push('status = ?'); bindings.push(status) }
+  // Use the same effective membership as serializeUser, including invalid dates.
+  if (memberType) {
+    conditions.push(`(CASE WHEN member_type = 'lifetime' THEN 'lifetime'
+      WHEN member_type = 'monthly' AND julianday(member_expire_at) > julianday(?) THEN 'monthly'
+      ELSE 'none' END) = ?`)
+    bindings.push(new Date().toISOString(), memberType)
+  }
+  const counts = await context.env.DB.prepare(`SELECT COUNT(*) AS total,
+    COALESCE(SUM(role = 'admin'), 0) AS admin, COALESCE(SUM(role = 'user'), 0) AS user
+    FROM users WHERE ${conditions.join(' AND ')}`).bind(...bindings).first<{ total: number; admin: number; user: number }>()
+    ?? { total: 0, admin: 0, user: 0 }
+  if (role) { conditions.push('role = ?'); bindings.push(role) }
+  const total = role ? counts[role] : counts.total
+  const pageSize = 10
+  const page = Math.min(parsed.data.page, Math.max(1, Math.ceil(total / pageSize)))
   const result = await context.env.DB.prepare(`
-    SELECT id, username, avatar_url, role, status, member_type, member_started_at, member_expire_at, created_at
-    FROM users WHERE deleted_at IS NULL AND (? = '' OR username LIKE ?)
-    ORDER BY role = 'admin' DESC, created_at DESC, id DESC LIMIT 200
-  `).bind(q, `%${q}%`).all<AdminUserRow>()
+    SELECT id, username, avatar_url, role, is_super, status, member_type, member_started_at, member_expire_at, created_at, last_login_at
+    FROM users WHERE ${conditions.join(' AND ')}
+    ORDER BY is_super DESC, role = 'admin' DESC, created_at DESC, id DESC LIMIT ? OFFSET ?
+  `).bind(...bindings, pageSize, (page - 1) * pageSize).all<AdminUserRow>()
   // Use the same effective membership as authentication and download checks.
   // Retain the stored expiry for history and future renewal edits.
   const users = result.results.map((row) => ({ ...row, member_type: serializeUser(row).memberType }))
-  return context.json({ ok: true, data: users })
+  return context.json({ ok: true, data: { users, counts, pagination: { page, pageSize, total } } })
 })
 
 const userUpdateSchema = z.object({
@@ -56,70 +97,115 @@ const userUpdateSchema = z.object({
   role: z.enum(['user', 'admin']).optional(),
   memberType: z.enum(['none', 'monthly', 'lifetime']).optional(),
   memberExpireAt: z.string().datetime().nullable().optional(),
-}).refine((value) => Object.keys(value).length > 0)
+}).strict().refine((value) => Object.keys(value).length > 0)
 
-admin.patch('/users/:id', async (context) => {
-  const userId = Number(context.req.param('id'))
-  if (!Number.isInteger(userId)) return fail(context, 400, 'INVALID_USER', '用户 ID 无效。')
-  const parsed = await parseJson(context, userUpdateSchema)
-  if (!parsed.success) return parsed.response
-  const operator = context.get('user')
-  if (userId === operator.id && (parsed.data.status === 'disabled' || parsed.data.role === 'user')) {
-    return fail(context, 409, 'CANNOT_REVOKE_SELF', '不能禁用自己或移除自己的管理员权限。')
-  }
+function userPermission(operator: AuthUser, target: AdminUserRow, update?: z.infer<typeof userUpdateSchema>, deleting = false) {
+  if (target.is_super === 1) return '超级管理员不可操作。'
+  if (target.id === operator.id && (deleting || update?.status === 'disabled' || update?.role === 'user')) return '不能删除、禁用或降级自己。'
+  if (!operator.isSuper && target.role === 'admin') return '普通管理员只能管理普通用户。'
+  if (!operator.isSuper && update?.role === 'admin' && target.role !== 'admin') return '只有超级管理员可以任命或撤销管理员。'
+  return null
+}
 
-  const current = await context.env.DB.prepare(`
-    SELECT id, member_type, member_expire_at FROM users WHERE id = ? AND deleted_at IS NULL
-  `).bind(userId).first<{ id: number; member_type: string; member_expire_at: string | null }>()
-  if (!current) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
+const targetUserSql = `SELECT id, username, avatar_url, role, is_super, status, member_type,
+  member_started_at, member_expire_at, created_at, last_login_at FROM users WHERE deleted_at IS NULL`
 
-  const nextType = parsed.data.memberType ?? current.member_type
-  const requestedExpire = parsed.data.memberExpireAt ? toDatabaseDate(parsed.data.memberExpireAt) : parsed.data.memberExpireAt
-  const nextExpire = nextType === 'monthly' ? (requestedExpire ?? current.member_expire_at) : null
-  if (nextType === 'monthly' && !nextExpire) return fail(context, 400, 'MEMBER_EXPIRY_REQUIRED', '月度会员必须设置到期时间。')
-
-  const statements = [context.env.DB.prepare(`
+function userStatements(database: D1Database, operator: AuthUser, current: AdminUserRow, update: z.infer<typeof userUpdateSchema>) {
+  const nextType = update.memberType ?? current.member_type
+  const requestedExpire = update.memberExpireAt ? toDatabaseDate(update.memberExpireAt) : update.memberExpireAt
+  const nextExpire = nextType === 'monthly' ? (requestedExpire === undefined ? current.member_expire_at : requestedExpire) : null
+  if (nextType === 'monthly' && !nextExpire && (update.memberType !== undefined || update.memberExpireAt !== undefined)) return null
+  const statements = [database.prepare(`
     UPDATE users SET status = COALESCE(?, status), role = COALESCE(?, role), member_type = ?,
       member_started_at = CASE WHEN ? <> member_type THEN CURRENT_TIMESTAMP ELSE member_started_at END,
-      member_expire_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
-  `).bind(parsed.data.status ?? null, parsed.data.role ?? null, nextType, nextType, nextExpire, userId)]
-
+      member_expire_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL AND is_super = 0
+  `).bind(update.status ?? null, update.role ?? null, nextType, nextType, nextExpire, current.id)]
   if (nextType !== current.member_type || nextExpire !== current.member_expire_at) {
-    statements.push(context.env.DB.prepare(`
+    statements.push(database.prepare(`
       INSERT INTO membership_changes
         (user_id, before_type, after_type, before_expire_at, after_expire_at, reason, operator_id)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).bind(userId, current.member_type, nextType, current.member_expire_at, nextExpire, '管理员手动调整', operator.id))
+    `).bind(current.id, current.member_type, nextType, current.member_expire_at, nextExpire, '管理员手动调整', operator.id))
   }
-  if (parsed.data.status === 'disabled') statements.push(context.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId))
+  if (update.status === 'disabled') statements.push(database.prepare('DELETE FROM sessions WHERE user_id = ?').bind(current.id))
+  return statements
+}
+
+const bulkUserSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('disable'), ids: z.array(z.number().int().positive()).min(1).max(100) }).strict(),
+  z.object({ action: z.literal('membership'), ids: z.array(z.number().int().positive()).min(1).max(100),
+    memberType: z.enum(['none', 'monthly', 'lifetime']), memberExpireAt: z.string().datetime().nullable().optional() }).strict(),
+])
+
+admin.post('/users/bulk', async (context) => {
+  const parsed = await parseJson(context, bulkUserSchema)
+  if (!parsed.success) return parsed.response
+  if (parsed.data.action === 'membership' && parsed.data.memberType === 'monthly' && !parsed.data.memberExpireAt) {
+    return fail(context, 400, 'MEMBER_EXPIRY_REQUIRED', '批量设置月度会员必须指定统一到期时间。')
+  }
+  const ids = [...new Set(parsed.data.ids)]
+  const operator = context.get('user')
+  const result = await context.env.DB.prepare(`${targetUserSql} AND id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<AdminUserRow>()
+  if (result.results.length !== ids.length) return fail(context, 404, 'USER_NOT_FOUND', '部分用户不存在，请刷新后重试。')
+  const update = parsed.data.action === 'disable' ? { status: 'disabled' as const }
+    : { memberType: parsed.data.memberType, memberExpireAt: parsed.data.memberExpireAt }
+  const statements: D1PreparedStatement[] = []
+  for (const target of result.results) {
+    const denial = userPermission(operator, target, update)
+    if (denial) return fail(context, 403, 'USER_PROTECTED', `${target.username}：${denial}`)
+    const changes = userStatements(context.env.DB, operator, target, update)
+    if (!changes) return fail(context, 400, 'MEMBER_EXPIRY_REQUIRED', '月度会员必须设置到期时间。')
+    statements.push(...changes)
+  }
+  await context.env.DB.batch(statements)
+  return context.json({ ok: true, data: { updated: ids.length } })
+})
+
+admin.patch('/users/:id', async (context) => {
+  const userId = Number(context.req.param('id'))
+  if (!Number.isSafeInteger(userId) || userId <= 0) return fail(context, 400, 'INVALID_USER', '用户 ID 无效。')
+  const parsed = await parseJson(context, userUpdateSchema)
+  if (!parsed.success) return parsed.response
+  const operator = context.get('user')
+  const current = await context.env.DB.prepare(`${targetUserSql} AND id = ?`).bind(userId).first<AdminUserRow>()
+  if (!current) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
+  const denial = userPermission(operator, current, parsed.data)
+  if (denial) return fail(context, 403, 'USER_PROTECTED', denial)
+  const statements = userStatements(context.env.DB, operator, current, parsed.data)
+  if (!statements) return fail(context, 400, 'MEMBER_EXPIRY_REQUIRED', '月度会员必须设置到期时间。')
   await context.env.DB.batch(statements)
   return context.json({ ok: true, data: null })
 })
 
 admin.delete('/users/:id', async (context) => {
   const userId = Number(context.req.param('id'))
-  if (!Number.isInteger(userId)) return fail(context, 400, 'INVALID_USER', '用户 ID 无效。')
-  if (userId === context.get('user').id) return fail(context, 409, 'CANNOT_DELETE_SELF', '不能删除当前管理员账号。')
-  const result = await context.env.DB.prepare(`
+  if (!Number.isSafeInteger(userId) || userId <= 0) return fail(context, 400, 'INVALID_USER', '用户 ID 无效。')
+  const target = await context.env.DB.prepare(`${targetUserSql} AND id = ?`).bind(userId).first<AdminUserRow>()
+  if (!target) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
+  const denial = userPermission(context.get('user'), target, undefined, true)
+  if (denial) return fail(context, 403, 'USER_PROTECTED', denial)
+  const results = await context.env.DB.batch([context.env.DB.prepare(`
     UPDATE users SET status = 'disabled', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND deleted_at IS NULL
-  `).bind(userId).run()
-  if (!result.meta.changes) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
-  await context.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run()
+    WHERE id = ? AND deleted_at IS NULL AND is_super = 0
+  `).bind(userId), context.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId)])
+  if (!results[0]?.meta.changes) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
   return context.json({ ok: true, data: null })
 })
 
 admin.get('/orders', async (context) => {
-  const status = String(context.req.query('status') ?? '').trim()
-  const q = String(context.req.query('q') ?? '').trim()
+  const parsed = adminListQuerySchema.extend({ status: z.enum(['pending', 'approved', 'rejected']).optional() }).safeParse(context.req.query())
+  if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '分页参数无效。')
+  const { q, status = '' } = parsed.data
+  const from = `FROM membership_orders o JOIN users u ON u.id = o.user_id
+    WHERE (? = '' OR o.status = ?) AND (? = '' OR u.username LIKE ?)`
+  const bindings = [status, status, q, `%${q}%`]
+  const pagination = await listPagination(context.env.DB, from, bindings, parsed.data.page)
   const result = await context.env.DB.prepare(`
     SELECT o.id, o.plan, o.payment_channel, o.status, o.user_note, o.admin_note,
            o.submitted_at, o.reviewed_at, u.id AS user_id, u.username
-    FROM membership_orders o JOIN users u ON u.id = o.user_id
-    WHERE (? = '' OR o.status = ?) AND (? = '' OR u.username LIKE ?)
-    ORDER BY o.submitted_at DESC, o.id DESC LIMIT 200
-  `).bind(status, status, q, `%${q}%`).all()
-  return context.json({ ok: true, data: result.results })
+    ${from} ORDER BY o.submitted_at DESC, o.id DESC LIMIT ? OFFSET ?
+  `).bind(...bindings, pagination.pageSize, (pagination.page - 1) * pagination.pageSize).all()
+  return context.json({ ok: true, data: { items: result.results, pagination } })
 })
 
 const orderReviewSchema = z.object({ status: z.enum(['approved', 'rejected']), adminNote: z.string().trim().max(300).optional().default('') })
@@ -142,6 +228,10 @@ admin.patch('/orders/:id', async (context) => {
   `).bind(parsed.data.status, parsed.data.adminNote || null, operator.id, orderId)]
 
   if (parsed.data.status === 'approved') {
+    const target = await context.env.DB.prepare(`${targetUserSql} AND id = ?`).bind(order.user_id).first<AdminUserRow>()
+    if (!target) return fail(context, 404, 'USER_NOT_FOUND', '用户不存在。')
+    const denial = userPermission(operator, target)
+    if (denial) return fail(context, 403, 'USER_PROTECTED', denial)
     const afterType = order.plan
     const afterExpire = order.plan === 'monthly' ? addOneMonth(order.member_type === 'monthly' ? order.member_expire_at : null) : null
     statements.push(
@@ -169,16 +259,19 @@ admin.delete('/orders/:id', async (context) => {
 })
 
 admin.get('/feedback', async (context) => {
-  const status = String(context.req.query('status') ?? '').trim()
-  const q = String(context.req.query('q') ?? '').trim()
+  const parsed = adminListQuerySchema.extend({ status: z.enum(['pending', 'processing', 'resolved', 'closed']).optional() }).safeParse(context.req.query())
+  if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '分页参数无效。')
+  const { q, status = '' } = parsed.data
+  const from = `FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN games g ON g.id = f.game_id
+    WHERE (? = '' OR f.status = ?) AND (? = '' OR u.username LIKE ? OR f.title LIKE ? OR f.content LIKE ?)`
+  const bindings = [status, status, q, `%${q}%`, `%${q}%`, `%${q}%`]
+  const pagination = await listPagination(context.env.DB, from, bindings, parsed.data.page)
   const result = await context.env.DB.prepare(`
     SELECT f.id, f.type, f.title, f.content, f.status, f.admin_reply, f.created_at, f.handled_at,
            u.username, g.name AS game_name
-    FROM feedback f JOIN users u ON u.id = f.user_id LEFT JOIN games g ON g.id = f.game_id
-    WHERE (? = '' OR f.status = ?) AND (? = '' OR u.username LIKE ? OR f.title LIKE ? OR f.content LIKE ?)
-    ORDER BY f.created_at DESC, f.id DESC LIMIT 200
-  `).bind(status, status, q, `%${q}%`, `%${q}%`, `%${q}%`).all()
-  return context.json({ ok: true, data: result.results })
+    ${from} ORDER BY f.created_at DESC, f.id DESC LIMIT ? OFFSET ?
+  `).bind(...bindings, pagination.pageSize, (pagination.page - 1) * pagination.pageSize).all()
+  return context.json({ ok: true, data: { items: result.results, pagination } })
 })
 
 const feedbackUpdateSchema = z.object({

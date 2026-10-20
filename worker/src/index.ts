@@ -30,6 +30,7 @@ type LoginUserRow = {
   password_hash: string
   avatar_url: string | null
   role: 'user' | 'admin'
+  is_super: number
   status: 'active' | 'disabled'
   member_type: 'none' | 'monthly' | 'lifetime'
   member_expire_at: string | null
@@ -133,7 +134,7 @@ app.post('/auth/login', async (context) => {
   }
 
   const row = await context.env.DB.prepare(`
-    SELECT id, username, password_hash, avatar_url, role, status, member_type, member_expire_at
+    SELECT id, username, password_hash, avatar_url, role, is_super, status, member_type, member_expire_at
     FROM users WHERE username = ? COLLATE NOCASE AND deleted_at IS NULL
   `).bind(username).first<LoginUserRow>()
 
@@ -148,6 +149,7 @@ app.post('/auth/login', async (context) => {
     context.env.DB.prepare("DELETE FROM sessions WHERE datetime(expire_at) <= datetime('now')"),
   ])
   await createSession(context, row.id)
+  await context.env.DB.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').bind(row.id).run()
   console.log('user_logged_in', { userId: row.id })
   return context.json({ ok: true, data: serializeUser(row) })
 })

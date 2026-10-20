@@ -106,6 +106,46 @@ html.dark .admin-status.draft { color: #e2b664; }
 .admin-page .admin-search input { font-size: 12px; }
 .admin-page :is(button, a, input, select, textarea):focus-visible, .admin-editor-dialog :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
+.user-role-tabs { display: flex; gap: 24px; padding: 0 20px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.user-role-tabs button { flex: none; padding: 17px 0 13px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font-size: 13px; }
+.user-role-tabs button[aria-selected="true"] { color: var(--blue-dark); border-bottom-color: var(--blue); font-weight: 600; }
+.user-role-tabs button span { margin-left: 4px; font-weight: 400; }
+.user-filters { flex-wrap: nowrap; }
+.user-bulk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 0 20px 16px; font-size: 12px; color: var(--muted); }
+.user-bulk-bar > span { margin-right: auto; }
+.user-list-table { min-width: 1030px; }
+.user-checkbox { width: 44px; text-align: center; }
+.admin-page .user-checkbox input { width: 16px; height: 16px; padding: 0; accent-color: var(--blue); cursor: pointer; }
+.admin-page .user-checkbox input:disabled { cursor: not-allowed; }
+.user-badge { display: inline-block; border-radius: 5px; padding: 4px 8px; font-size: 11px; white-space: nowrap; background: var(--surface-raised); color: var(--text-secondary); }
+.user-badge.admin { color: var(--blue-dark); background: var(--blue-soft); }
+.user-badge.super { color: #7e22ce; background: #f3e8ff; }
+.user-badge.active { color: #047857; background: #d1fae5; }
+.user-badge.disabled { color: #b91c1c; background: #fee2e2; }
+.admin-page .user-expiring, .admin-page .user-expiring .table-subline { color: #b45309; }
+.user-protection { max-width: 210px; white-space: normal; line-height: 1.5; }
+.admin-users button:disabled, .admin-user-drawer :disabled { cursor: not-allowed; opacity: .45; }
+.user-edit-form { display: flex; flex-direction: column; gap: 20px; color: var(--ink); }
+.user-edit-form label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 550; }
+.user-edit-form :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 7px; padding: 8px 12px; font: inherit; background: var(--control-bg); color: var(--ink); }
+.user-edit-form small { color: var(--muted); font-size: 12px; }
+.user-edit-name { margin: 0 0 4px; font-size: 18px; font-weight: 650; }
+.admin-user-drawer { background: var(--surface); }
+.admin-user-drawer .el-drawer__header { padding-bottom: 18px; margin-bottom: 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+.admin-user-drawer .el-drawer__footer { border-top: 1px solid var(--line); }
+html.dark .user-badge.super { color: #d8b4fe; background: #3b2452; }
+html.dark .user-badge.active { color: #6ee7b7; background: #123b32; }
+html.dark .user-badge.disabled { color: #fca5a5; background: #45242a; }
+html.dark .admin-page .user-expiring, html.dark .admin-page .user-expiring .table-subline { color: #fbbf24; }
+@media (max-width: 680px) {
+  .user-role-tabs { gap: 20px; padding-inline: 14px; }
+  .admin-page .user-filters { flex-wrap: wrap; }
+  .user-filters .admin-search { flex-basis: 100%; }
+  .user-filters .admin-filter { flex: 1; }
+  .user-bulk-bar { padding-inline: 14px; gap: 8px; }
+  .user-bulk-bar > span { flex-basis: 100%; }
+}
+
 /* The editor scrolls its content while keeping tabs and actions available. */
 .admin-editor-dialog.el-dialog {
   --ink: #172033;

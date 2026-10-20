@@ -31,6 +31,7 @@
 - `src/utils/catalogQuery.ts`、`catalogCache.ts`、`catalogNavigation.ts`：公开游戏库查询归一化、六页/120 条以内的 30 秒 LRU 缓存、最多 12 个列表滚动位置和内容渲染完成信号。缓存键含全部条件及每页数量；成功后台写操作清缓存，刷新强制重新获取，过期/失败/取消请求不写缓存。
 - `src/views/GameDetailView.vue`：封面摘要、介绍、最低配置与下载卡片；封面不显示硬编码的平台标识；桌面下载区吸顶，手机按介绍、下载、配置排列；包含骨架屏、加载重试、封面回退和资源维护状态。
 - `src/views/AdminView.vue`：独立侧栏、顶栏和主题切换的管理后台；“回到网站”位于顶部栏最右侧。概览展示真实统计与待办，游戏列表使用分类/权限/发布状态下拉筛选；分类与标签通过顶部两个按钮切换，每次进入该模块默认显示分类，单次只渲染一张表。
+- `src/components/AdminUsers.vue`：用户管理角色标签及计数、用户名/账号/有效会员筛选、只读表格、右侧抽屉和当前页批量操作；每页 10 条服务端分页，筛选/翻页/刷新清空选择，请求支持取消、15 秒超时和旧响应隔离。
 - `src/components/AdminGameEditor.vue`：游戏编辑弹窗的四个页签（基础信息、游戏介绍、配置要求、标签与下载）；`src/utils/adminGameForm.ts` 负责旧数据载入、配置序列化、跨页签校验和提交载荷；`src/styles/admin.css` 为后台独立样式。
 - `src/composables/useAdminGames.ts`：后台列表请求取消、15 秒超时和过期响应隔离；组件内 LRU 最多缓存 6 页/60 条，30 秒过期，写入/删除/手动刷新使缓存失效，离开后台时释放。
 - `src/styles.css`：基础样式、动画和响应式规则；`src/styles/theme.css`：夜间语义颜色、Element Plus 变量、导航提示及主题按钮的手机适配。
@@ -49,6 +50,8 @@
 重要配置包括 Worker 的 `DB`、`ASSETS`、`MEDIA`、`MEDIA_PUBLIC_URL`、`APP_ENV`、`ALLOWED_ORIGIN`，以及前端可选的 `VITE_API_BASE_URL`、`VITE_SUPPORT_EMAIL`。R2 桶为 `youlang`，图片域名为 `https://cdn.youlang.cc.cd`，Worker 使用绑定访问，无需 S3 密钥。不得在文档或代码中记录真实密钥。
 
 `0003_game_description_format.sql` 新增 `games.description_format`（`plain` / `markdown`）。历史数据默认 `plain`，新后台创建默认 `markdown`，旧客户端更新省略格式时保留原值；正文仍存 `description`，上限 30000 字符。游戏列表只返回卡片字段（`GameSummary`），详情才返回正文和最低配置（`Game`）。`POST /api/admin/uploads/images` 接收 `file` 与 `purpose`，返回 `key/url`，仅管理员可调用；限制单张 5 MB、JPG/PNG/WebP。公开图片路由在会话中间件之前挂载，避免图片请求访问 D1。
+
+`0004_user_management.sql` 新增 `users.is_super`、`last_login_at`、后台查询索引及超管身份保护触发器，一次性将已有未删除的 `s0xu` 初始化为启用的超级管理员；运行时只判断字段，迁移时不存在的账号需按 README 手动初始化。登录成功记录 `last_login_at`，历史账号没有登录记录时展示“暂无记录”，不推测旧时间。当前身份新增 `isSuper`。`GET /api/admin/users` 返回 `{ users, counts, pagination }`，支持 `q/role/status/memberType/page`；counts 应用搜索与账号/会员筛选，但不应用角色标签条件，三项计数覆盖全部符合条件账号而非当前页。`POST /api/admin/users/bulk` 支持 `disable/membership`，整批检查后使用 D1 事务 batch 写入；批量月度会员必须明确传入统一到期时间，会员变更继续写入审计记录。用户、工单、反馈均固定每页 10 条并回退越界页码，工单/反馈列表返回 `{ items, pagination }`。
 
 # 6. 功能之间的关系
 
@@ -91,6 +94,7 @@ npm run deploy
 - 页面内容先改对应 `views/*.vue`；共享导航/卡片看 `components/`，全局和移动端表现看 `styles.css`。
 - API 字段变化必须同步后端路由、`src/api/client.ts` 和使用该数据的页面；数据库变化必须新增迁移，不要直接改已执行的迁移。
 - 不要把下载 URL 放入公开游戏响应，也不要只依赖前端判断会员或管理员权限。
+- 用户管理禁止对超级管理员进行编辑/禁用/删除；普通管理员只能管理普通用户，任免其他管理员仅限超管，禁止删除/禁用/降级自己。单用户、批量及工单开通会员共用服务端保护规则；不要恢复用户名硬编码或允许客户端写入 `is_super`。禁用/删除撤销会话，月度有效性与鉴权一致，7 天内到期显示橙色。发布前执行 `0004` 迁移；不要重复执行生产 seed。
 - 认证使用 PBKDF2、哈希会话令牌和 HttpOnly Cookie；当前迭代次数兼顾 Worker CPU 限制，不要随意提高或改成不兼容算法。
 - 首页背景会随机开始、预加载后线性缩放并交叉淡入；修改时要保持无灰屏并兼容 `prefers-reduced-motion`。
 - 页面过渡为短暂淡入和轻微位移，兼容 `prefers-reduced-motion`；仅路径变化重建页面，筛选和个人中心标签变化保持滚动位置。详情页在挂载时按当前 slug 加载，依赖 `App.vue` 的路径键，不能直接改回只按路由名称复用。
@@ -110,6 +114,10 @@ npm run deploy
 - 当前 `tests/e2e/` 共 16 个测试实例，覆盖基本业务流程、仅按名称搜索与组合筛选、路由过渡、筛选位置、详情异常状态、减少动态效果及后台会员到期和分类标签操作；后台测试以隔离数据执行真实用户列表处理函数，不改开发库中的管理员身份。完整鉴权矩阵与慢网络返回位置仍可补充验证。
 
 # AI 快速上手
+
+2026-10-20 已按顺序执行 `npm run db:migrate:remote` 和 `npm run deploy`，后台用户管理更新已发布线上。远程 D1 确认 `0001` 至 `0004` 均已应用，本次迁移命令返回无待执行迁移；`is_super`、`last_login_at` 字段及 1 个启用的超级管理员记录已确认。前后端类型检查与生产构建通过，Cloudflare Worker 发布版本为 `21897589-f1f2-4a80-93f0-3b878c1beb79`。通过本机已配置代理检查 `https://youlang.cc.cd` 及 Workers 地址：首页、健康检查、游戏列表和当前身份接口正常，未登录访问用户管理接口返回 401；首页 HTML 与新版后台 JS 的 SHA-256 均与本地构建一致。
+
+2026-10-20 按用户文本重做后台用户管理：全部/管理员/普通用户标签提供服务端计数，账号/有效会员筛选和用户名搜索放于表格上方；表格只展示角色徽章、启用/禁用标签、会员到期与最近登录，7 天内到期橙色提示。编辑改为右侧抽屉统一保存，取消不污染表格；支持当前页勾选、批量禁用和批量会员，刷新/筛选/翻页清空选择。新增 `0004_user_management.sql` 初始化超管字段并保护身份，登录成功记录最近登录；单用户、删除、批量及工单会员写入均校验超管保护、普通管理员范围和自我保护。用户、工单和反馈原 LIMIT 200 改为每页 10 条服务端分页，游戏已有分页继续保留；个人中心历史列表目前仍为服务端最近 100 条展示，尚无分页控件，无前端全量切页。前后端类型检查、最终构建、Wrangler deploy dry-run 及本地 `0004` 迁移通过；用户管理与鉴权共 26 项桌面/手机测试经修复及针对性复测均通过，覆盖超过 200 条数据、越界回退、权限矩阵、整批预校验、会话撤销、登录时间、抽屉取消、删除确认、筛选请求竞态、失败重试和夜间手机布局。尚未部署线上，生产需先迁移再部署。
 
 2026-10-19 用户实机确认 HTTP 访问导致部分手机浏览器会话未保存和新建游戏点击无响应，手动切换 `https://youlang.cc.cd` 后登录及接口均正常。按要求统一正式站点 HTTPS：Worker 增加外层站点路由，生产 HTTP 页面/API 以 308 转到同地址 HTTPS，保留路径与查询参数；HTTPS 响应设置 HSTS（不强制其他子域）。`wrangler.toml` 的 `run_worker_first` 改为 `true`，非 API 请求交给 `ASSETS.fetch`，本地回环及开发环境继续允许 HTTP；`index.html` 在应用加载前也将正式域名 HTTP 地址转为 HTTPS。排除手机兼容性故障：下载行仅需本地唯一标识，改为递增 key，避免 HTTP/旧内核缺少 `crypto.randomUUID()` 导致表单挂载报错；新增 `requestTimeout.ts`，通过 AbortController、定时器和父 signal 清理实现取消/超时，替代所有前端 `AbortSignal.any/timeout` 直接调用，覆盖登录恢复、游戏列表/详情、后台列表/编辑及上传。前后端类型检查、构建、Wrangler 发布 dry-run 和登录/HTTPS/兼容性/游戏库 22 项桌面手机测试通过，另有公开图片、上传保存及关闭表单取消上传 6 项通过，共 28 项；尚未发布线上，生效需部署本次代码。
 

@@ -7,7 +7,7 @@ import type { AppEnv } from '../../worker/src/types'
 
 async function authFixture() {
   const database = new DatabaseSync(':memory:')
-  for (const name of ['0001_initial.sql', '0002_auth_attempts.sql', '0003_game_description_format.sql']) {
+  for (const name of ['0001_initial.sql', '0002_auth_attempts.sql', '0003_game_description_format.sql', '0004_user_management.sql']) {
     database.exec(readFileSync(new URL(`../../worker/migrations/${name}`, import.meta.url), 'utf8'))
   }
   database.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')")
@@ -31,7 +31,7 @@ async function authFixture() {
     DB: { prepare, batch: async (statements: ReturnType<typeof prepare>[]) => Promise.all(statements.map(statement => /^\s*SELECT/i.test(statement.sql) ? statement.all() : statement.run())) },
     APP_ENV: 'test', ALLOWED_ORIGIN: 'http://127.0.0.1:5173',
   } as unknown as AppEnv['Bindings']
-  return { bindings, close: () => database.close() }
+  return { database, bindings, close: () => database.close() }
 }
 
 async function login(page: Page) {
@@ -122,6 +122,7 @@ test('身份及受保护接口禁止缓存，失效会话不返回清 Cookie，H
       body: JSON.stringify({ username: 'session_admin', password: 'Session123456' }),
     }, fixture.bindings)
     expect(login.status).toBe(200)
+    expect(fixture.database.prepare('SELECT last_login_at FROM users WHERE id = 1').get()!.last_login_at).toBeTruthy()
     const cookie = login.headers.get('Set-Cookie')!
     for (const attribute of ['HttpOnly', 'Secure', 'SameSite=Lax', 'Path=/']) expect(cookie).toContain(attribute)
     for (const path of ['/auth/me', '/membership/orders', '/admin/overview']) {

@@ -10,6 +10,8 @@
 - 免费/会员下载地址按身份授权，公开响应不包含真实 URL。
 - 用户反馈、资源失效提醒、会员付款工单和进度查询。
 - 管理后台的游戏/下载地址、分类/标签、用户会员、工单审核和反馈处理。
+- 用户管理按角色分组，支持账号/会员筛选、抽屉编辑、批量禁用和批量设置会员；用户、工单和反馈均使用服务端分页。
+- 超级管理员身份存于 `users.is_super`；普通管理员只能管理普通用户，任免管理员仅限超级管理员，受保护账号在前后端共同校验。
 - R2 游戏封面和正文图片上传，兼容已有 Cloudinary 图片地址。
 - Markdown 游戏介绍、实时预览、截图粘贴/拖拽上传、图片放大，以及旧纯文本介绍的转换预览。
 
@@ -32,13 +34,13 @@ npm run dev
 
 ## 管理员初始化
 
-先通过网站注册一个账号，再通过 Wrangler 将该账号提升为管理员。用户名需要替换成实际值：
+`0004_user_management.sql` 会一次性将现存、未删除的 `s0xu` 标记为超级管理员。后续鉴权只读取 `is_super`，修改用户名不会改变权限。如果迁移时该账号不存在，先注册账号，再通过 Wrangler 初始化超级管理员（用户名替换成实际值）：
 
 ```bash
-npx wrangler d1 execute youlun-db --remote --command "UPDATE users SET role = 'admin' WHERE username = 'your_username'"
+npx wrangler d1 execute youlun-db --remote --command "UPDATE users SET role = 'admin', is_super = 1, status = 'active' WHERE username = 'your_username' AND deleted_at IS NULL"
 ```
 
-退出并重新登录后，导航中会出现“管理后台”。不要在迁移或仓库中保存默认管理员密码。
+退出并重新登录后，导航中会出现“管理后台”。普通管理员由超级管理员在用户抽屉中任命。数据库触发器保护超级管理员不被禁用、降级或删除；不要在迁移或仓库中保存默认管理员密码。
 
 ## 测试
 
@@ -60,10 +62,11 @@ npm run typecheck:api
 
 ## 生产部署
 
-先执行远程迁移（本次新增 `0003_game_description_format.sql`，已有介绍默认保留为纯文本）：
+先执行远程迁移（包括 `0003_game_description_format.sql` 和 `0004_user_management.sql`，已有介绍保留为纯文本，新增超级管理员标记与最近登录时间）：
 
 ```bash
 npm run db:migrate:remote
+npm run deploy
 ```
 
 `main` 分支已连接 Cloudflare Workers Builds。每次推送后执行 `npm run build` 和 `npx wrangler deploy`。生产资源配置位于 `wrangler.toml`。

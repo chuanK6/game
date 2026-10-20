@@ -26,7 +26,7 @@ function screenshotPng() {
 }
 const png = screenshotPng()
 const legacyText = '# 原来的标题\n星号 *保持原样*，路径 C:\\Games\\demo\n\n安装后即可开始游戏。'
-const operator: AuthUser = { id: 99, username: '图片测试管理员', avatarUrl: null, role: 'admin', memberType: 'none', memberExpireAt: null, isMember: false }
+const operator: AuthUser = { id: 99, username: '图片测试管理员', avatarUrl: null, role: 'admin', isSuper: false, memberType: 'none', memberExpireAt: null, isMember: false }
 
 function fixture() {
   const sqlite = new DatabaseSync(':memory:')
@@ -35,6 +35,7 @@ function fixture() {
   sqlite.prepare("INSERT INTO games (name, slug, cover_url, description, min_config, category_id, resource_type, status) VALUES (?, ?, ?, ?, ?, 1, 'free', 'published')")
     .run('旧游戏', 'legacy-game', 'https://res.cloudinary.com/demo/image/upload/legacy.jpg', legacyText, '["操作系统：Windows 10"]')
   sqlite.exec(readFileSync(new URL('../../worker/migrations/0003_game_description_format.sql', import.meta.url), 'utf8'))
+  sqlite.exec(readFileSync(new URL('../../worker/migrations/0004_user_management.sql', import.meta.url), 'utf8'))
   function prepare(sql: string) {
     const statement = sqlite.prepare(sql)
     let values: SQLInputValue[] = []

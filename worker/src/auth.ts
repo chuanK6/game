@@ -13,6 +13,7 @@ type UserSessionRow = {
   username: string
   avatar_url: string | null
   role: 'user' | 'admin'
+  is_super: number
   member_type: 'none' | 'monthly' | 'lifetime'
   member_expire_at: string | null
   status: 'active' | 'disabled'
@@ -66,7 +67,7 @@ export async function readSession(context: Context<AppEnv>) {
 
   const tokenHash = await sha256(token)
   const row = await context.env.DB.prepare(`
-    SELECT u.id, u.username, u.avatar_url, u.role, u.member_type, u.member_expire_at, u.status, s.token_hash
+    SELECT u.id, u.username, u.avatar_url, u.role, u.is_super, u.member_type, u.member_expire_at, u.status, s.token_hash
     FROM sessions s
     JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND datetime(s.expire_at) > datetime('now') AND u.deleted_at IS NULL
@@ -86,7 +87,7 @@ export async function readSession(context: Context<AppEnv>) {
   return { user: serializeUser(row), tokenHash }
 }
 
-export function serializeUser(row: Pick<UserSessionRow, 'id' | 'username' | 'avatar_url' | 'role' | 'member_type' | 'member_expire_at'>): AuthUser {
+export function serializeUser(row: Pick<UserSessionRow, 'id' | 'username' | 'avatar_url' | 'role' | 'member_type' | 'member_expire_at'> & { is_super?: number }): AuthUser {
   const expireAt = row.member_expire_at ? parseStoredDate(row.member_expire_at) : Number.NaN
   const isMember = row.member_type === 'lifetime'
     || (row.member_type === 'monthly' && Number.isFinite(expireAt) && expireAt > Date.now())
@@ -96,6 +97,7 @@ export function serializeUser(row: Pick<UserSessionRow, 'id' | 'username' | 'ava
     username: row.username,
     avatarUrl: row.avatar_url,
     role: row.role,
+    isSuper: row.is_super === 1,
     memberType: isMember ? row.member_type : 'none',
     memberExpireAt: row.member_expire_at,
     isMember,

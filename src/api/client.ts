@@ -21,6 +21,7 @@ export type CurrentUser = {
   username: string
   avatarUrl: string | null
   role: 'user' | 'admin'
+  isSuper: boolean
   memberType: 'none' | 'monthly' | 'lifetime'
   memberExpireAt: string | null
   isMember: boolean
@@ -53,8 +54,14 @@ export type MembershipOrder = {
 export type AdminOverview = { users: number; games: number; pendingOrders: number; openFeedback: number }
 export type AdminUser = {
   id: number; username: string; role: 'user' | 'admin'; status: 'active' | 'disabled'
+  is_super: number; last_login_at: string | null
   member_type: 'none' | 'monthly' | 'lifetime'; member_expire_at: string | null; created_at: string
 }
+export type AdminUsersQuery = { q?: string; page?: number; role?: AdminUser['role']; status?: AdminUser['status']; memberType?: AdminUser['member_type'] }
+export type AdminUserList = { users: AdminUser[]; counts: { total: number; admin: number; user: number }; pagination: Pagination }
+export type AdminUserUpdate = { status?: AdminUser['status']; role?: AdminUser['role']; memberType?: AdminUser['member_type']; memberExpireAt?: string | null }
+export type AdminUserBulk = { ids: number[] } & ({ action: 'disable' } | { action: 'membership'; memberType: AdminUser['member_type']; memberExpireAt?: string | null })
+export type AdminList<T> = { items: T[]; pagination: Pagination }
 export type AdminOrder = MembershipOrder & { user_id: number; username: string }
 export type AdminFeedback = FeedbackItem & { username: string }
 export type AdminGame = {
@@ -145,6 +152,12 @@ export const membershipApi = {
   orders: () => apiRequest<MembershipOrder[]>('/membership/orders'),
 }
 
+function queryParams(query: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value))
+  return params
+}
+
 export const adminApi = {
   uploadImage: (file: File, purpose: 'cover' | 'content', signal?: AbortSignal) => {
     const body = new FormData()
@@ -153,13 +166,14 @@ export const adminApi = {
     return apiRequest<{ key: string; url: string }>('/admin/uploads/images', { method: 'POST', body, signal })
   },
   overview: () => apiRequest<AdminOverview>('/admin/overview'),
-  users: (q = '') => apiRequest<AdminUser[]>(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`),
-  updateUser: (id: number, payload: { status?: AdminUser['status']; role?: AdminUser['role']; memberType?: AdminUser['member_type']; memberExpireAt?: string | null }) => apiRequest<null>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  users: (query: AdminUsersQuery = {}, signal?: AbortSignal) => apiRequest<AdminUserList>(`/admin/users?${queryParams(query)}`, { signal }),
+  updateUser: (id: number, payload: AdminUserUpdate) => apiRequest<null>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  bulkUsers: (payload: AdminUserBulk) => apiRequest<{ updated: number }>('/admin/users/bulk', { method: 'POST', body: JSON.stringify(payload) }),
   deleteUser: (id: number) => apiRequest<null>(`/admin/users/${id}`, { method: 'DELETE' }),
-  orders: (q = '') => apiRequest<AdminOrder[]>(`/admin/orders${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  orders: (query: { q?: string; page?: number } = {}, signal?: AbortSignal) => apiRequest<AdminList<AdminOrder>>(`/admin/orders?${queryParams(query)}`, { signal }),
   reviewOrder: (id: number, status: 'approved' | 'rejected', adminNote = '') => apiRequest<null>(`/admin/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status, adminNote }) }),
   deleteOrder: (id: number) => apiRequest<null>(`/admin/orders/${id}`, { method: 'DELETE' }),
-  feedback: (q = '') => apiRequest<AdminFeedback[]>(`/admin/feedback${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  feedback: (query: { q?: string; page?: number } = {}, signal?: AbortSignal) => apiRequest<AdminList<AdminFeedback>>(`/admin/feedback?${queryParams(query)}`, { signal }),
   updateFeedback: (id: number, status: FeedbackItem['status'], adminReply: string) => apiRequest<null>(`/admin/feedback/${id}`, { method: 'PATCH', body: JSON.stringify({ status, adminReply }) }),
   deleteFeedback: (id: number) => apiRequest<null>(`/admin/feedback/${id}`, { method: 'DELETE' }),
   games: (query: AdminGamesQuery = {}, signal?: AbortSignal) => {
