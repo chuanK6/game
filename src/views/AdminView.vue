@@ -6,8 +6,9 @@ import { useAdminGames } from '@/composables/useAdminGames'
 import { withRequestTimeout } from '@/utils/requestTimeout'
 import AdminGameEditor from '@/components/AdminGameEditor.vue'
 import AdminUsers from '@/components/AdminUsers.vue'
+import AdminAnnouncements from '@/components/AdminAnnouncements.vue'
 import '@/styles/admin.css'
-import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Users, ArrowUpRight, ChevronRight, Moon, Sun, Search, SlidersHorizontal, X, House } from 'lucide-vue-next'
+import { CheckCircle2, ClipboardList, Gamepad2, LayoutDashboard, MessageSquareText, Plus, RefreshCw, Tags, Trash2, Users, ArrowUpRight, ChevronRight, Moon, Sun, Search, SlidersHorizontal, X, House, Bell } from 'lucide-vue-next'
 import { ElButton, ElDialog, ElMessage, ElPagination } from 'element-plus'
 import {
   ApiError, adminApi, type AdminFeedback, type AdminGame, type AdminOrder, type AdminOverview,
@@ -15,7 +16,7 @@ import {
 } from '@/api/client'
 import { formatDateTime } from '@/utils/date'
 
-type Tab = 'overview' | 'games' | 'taxonomy' | 'orders' | 'feedback' | 'users'
+type Tab = 'overview' | 'announcements' | 'games' | 'taxonomy' | 'orders' | 'feedback' | 'users'
 type TaxonomyKind = 'categories' | 'tags'
 type TaxonomyForm = TaxonomyPayload & { id?: number }
 
@@ -37,6 +38,7 @@ const gamePageSize = 10
 const orders = ref<AdminOrder[]>([])
 const feedback = ref<AdminFeedback[]>([])
 const usersPanel = ref<InstanceType<typeof AdminUsers> | null>(null)
+const announcementsPanel = ref<InstanceType<typeof AdminAnnouncements> | null>(null)
 const orderPage = ref(1)
 const orderTotal = ref(0)
 const feedbackPage = ref(1)
@@ -55,6 +57,7 @@ const taxonomySection = ref<TaxonomyKind>('categories')
 const taxonomyForm = ref<TaxonomyForm>({ name: '', slug: '', status: 'active', sort: 0 })
 const tabs = [
   { value: 'overview' as const, label: '概览', icon: LayoutDashboard },
+  { value: 'announcements' as const, label: '公告管理', icon: Bell },
   { value: 'games' as const, label: '游戏资源', icon: Gamepad2 },
   { value: 'taxonomy' as const, label: '分类与标签', icon: Tags },
   { value: 'orders' as const, label: '会员工单', icon: ClipboardList },
@@ -63,6 +66,7 @@ const tabs = [
 ]
 
 const tabDescriptions: Record<Tab, string> = {
+  announcements: '发布站点公告，管理弹窗与历史内容。',
   overview: '站点动态与待办，一目了然。', games: '管理游戏、封面、介绍和下载地址。', taxonomy: '整理游戏分类，维护便于发现内容的标签。',
   orders: '查看会员申请，及时处理付款工单。', feedback: '回应玩家反馈，跟进资源与使用问题。', users: '管理账号状态与会员权限。',
 }
@@ -70,6 +74,7 @@ onMounted(() => { void loadTab('overview') })
 onBeforeUnmount(() => { tabRequest++; detailController?.abort(); listController?.abort() })
 
 async function loadTab(tab: Tab, force = false) {
+  if (tab === 'announcements' && activeTab.value === 'announcements') { await announcementsPanel.value?.refresh(); return }
   if (tab === 'users' && activeTab.value === 'users') { await usersPanel.value?.refresh(); return }
   const version = ++tabRequest
   listController?.abort()
@@ -78,7 +83,7 @@ async function loadTab(tab: Tab, force = false) {
   if (tab === 'taxonomy' && activeTab.value !== 'taxonomy') taxonomySection.value = 'categories'
   activeTab.value = tab
   if (tab !== 'games') { gameList.cancel(); detailController?.abort(); openingGameId.value = null }
-  loading.value = tab !== 'games' && tab !== 'users'
+  loading.value = tab !== 'games' && tab !== 'users' && tab !== 'announcements'
   loadError.value = ''
   const current = () => version === tabRequest
   try {
@@ -254,6 +259,7 @@ async function saveFeedback(item: AdminFeedback) {
         <div class="admin-toolbar"><div><h1>{{ tabs.find((tab) => tab.value === activeTab)?.label }}</h1><p>{{ tabDescriptions[activeTab] }}</p></div><div class="admin-heading-actions"><button class="icon-button" title="刷新" aria-label="刷新" @click="loadTab(activeTab, true)"><RefreshCw :size="18" /></button><button v-if="activeTab === 'games'" class="button button-primary" :disabled="!taxonomyReady" @click="openNewGame"><Plus :size="17" />新增游戏</button></div></div>
         <div v-if="loading" class="empty-state compact"><p>正在加载...</p></div>
         <div v-else-if="loadError" class="admin-load-error" role="alert"><p>{{ loadError }}</p><button class="button button-secondary button-small" @click="loadTab(activeTab, true)">重新加载</button></div>
+        <AdminAnnouncements v-else-if="activeTab === 'announcements'" ref="announcementsPanel" />
         <template v-else-if="activeTab === 'overview'">
         <div class="admin-stats">
           <button class="admin-stat-card" @click="loadTab('users')"><Users :size="22" /><span>用户</span><strong>{{ overview.users }}</strong></button>
@@ -268,7 +274,7 @@ async function saveFeedback(item: AdminFeedback) {
           <section class="admin-surface game-list-surface">
           <form class="admin-game-filters" aria-label="游戏筛选" @submit.prevent="searchTab('games')"><div class="admin-search"><Search :size="17" /><input v-model="gameSearch" aria-label="搜索游戏" maxlength="100" placeholder="搜索游戏名称或 slug" /><button type="submit">搜索</button></div><label class="admin-filter"><span>游戏分类</span><select v-model="gameFilters.categoryId" @change="applyGameFilters"><option value="">全部分类</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><label class="admin-filter"><span>资源权限</span><select v-model="gameFilters.resourceType" @change="applyGameFilters"><option value="">全部权限</option><option value="free">免费资源</option><option value="member">会员资源</option></select></label><label class="admin-filter"><span>发布状态</span><select v-model="gameFilters.status" @change="applyGameFilters"><option value="">全部状态</option><option value="draft">草稿</option><option value="published">已发布</option><option value="offline">已下架</option></select></label><button v-if="activeFilterCount" class="admin-reset" type="button" @click="resetGameFilters"><X :size="14" />重置</button></form>
           <div v-if="gamesError" class="admin-load-error" role="alert"><p>{{ gamesError }}</p><button class="button button-secondary button-small" @click="gameList.load(true)">重新加载</button></div>
-          <div v-else class="admin-table-wrap" :aria-busy="gamesLoading"><table class="admin-table hoverable-table game-list-table"><thead><tr><th>游戏</th><th>分类</th><th>权限</th><th>发布状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-if="gamesLoading"><td colspan="5" class="admin-table-empty"><RefreshCw :size="22" /><p>正在加载游戏…</p></td></tr><tr v-else-if="!games.length"><td colspan="5" class="admin-table-empty"><SlidersHorizontal :size="26" /><h3>{{ activeFilterCount ? '没有符合条件的游戏' : '还没有游戏资源' }}</h3><p>{{ activeFilterCount ? '试试调整筛选条件，或清空后重新搜索。' : '点击“新增游戏”，创建第一份游戏内容。' }}</p><button v-if="activeFilterCount" type="button" class="button button-secondary button-small" @click="resetGameFilters">清空筛选</button></td></tr><template v-else><tr v-for="item in games" :key="item.id"><td><div class="admin-game-cell"><img :src="item.cover_url" alt="" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.slug }}</small></div></div></td><td><span class="admin-category-name">{{ item.category }}</span></td><td><span :class="['admin-access', item.resource_type]">{{ item.resource_type === 'free' ? '免费' : '会员' }}</span></td><td><span :class="['admin-status', item.status]">{{ gameStatusLabels[item.status] }}</span></td><td><div class="row-actions"><button :disabled="openingGameId !== null" @click="openEditGame(item.id)">{{ openingGameId === item.id ? '加载中…' : '编辑' }}</button><button class="danger" :aria-label="`删除${item.name}`" title="删除" @click="deleteGame(item)"><Trash2 :size="16" /></button></div></td></tr></template></tbody></table></div>
+          <div v-else class="admin-table-wrap" :aria-busy="gamesLoading"><table class="admin-table hoverable-table game-list-table"><thead><tr><th>游戏</th><th>分类</th><th>权限</th><th>发布状态</th><th class="actions-heading">操作</th></tr></thead><tbody><tr v-if="gamesLoading"><td colspan="5" class="admin-table-empty"><RefreshCw :size="22" /><p>正在加载游戏…</p></td></tr><tr v-else-if="!games.length"><td colspan="5" class="admin-table-empty"><SlidersHorizontal :size="26" /><h3>{{ activeFilterCount ? '没有符合条件的游戏' : '还没有游戏资源' }}</h3><p>{{ activeFilterCount ? '试试调整筛选条件，或清空后重新搜索。' : '点击“新增游戏”，创建第一份游戏内容。' }}</p><button v-if="activeFilterCount" type="button" class="button button-secondary button-small" @click="resetGameFilters">清空筛选</button></td></tr><template v-else><tr v-for="item in games" :key="item.id"><td><div class="admin-game-cell"><img :src="item.cover_url" alt="" loading="lazy" /><div><strong>{{ item.name }}<span v-if="item.is_pinned" class="admin-pinned-label">置顶</span></strong><small>{{ item.slug }}</small></div></div></td><td><span class="admin-category-name">{{ item.category }}</span></td><td><span :class="['admin-access', item.resource_type]">{{ item.resource_type === 'free' ? '免费' : '会员' }}</span></td><td><span :class="['admin-status', item.status]">{{ gameStatusLabels[item.status] }}</span></td><td><div class="row-actions"><button :disabled="openingGameId !== null" @click="openEditGame(item.id)">{{ openingGameId === item.id ? '加载中…' : '编辑' }}</button><button class="danger" :aria-label="`删除${item.name}`" title="删除" @click="deleteGame(item)"><Trash2 :size="16" /></button></div></td></tr></template></tbody></table></div>
           <div class="admin-pagination"><span aria-live="polite">共 {{ gameTotal }} 个游戏<span v-if="activeFilterCount"> · 已筛选</span></span><ElPagination v-if="gameTotal > gamePageSize" background layout="prev, pager, next" :pager-count="5" :current-page="gamePage" :page-size="gamePageSize" :total="gameTotal" @current-change="changeGamePage" /></div>
           </section>
         </template>

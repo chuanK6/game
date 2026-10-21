@@ -1,3 +1,14 @@
+.announcement-table { min-width: 850px; }
+.announcement-title-link { max-width: 320px; padding: 0; border: 0; background: transparent; color: var(--ink); font-weight: 600; text-align: left; overflow-wrap: anywhere; line-height: 1.7; }
+.announcement-title-link:hover { color: var(--blue-dark); }
+.announcement-form { display: grid !important; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 22px; }
+.announcement-checkbox, .game-pinning label { display: inline-flex !important; align-items: center; gap: 8px; cursor: pointer; }
+.admin-editor-dialog.el-dialog .game-editor input[type="checkbox"] { width: 16px; height: 16px; padding: 0; flex: none; accent-color: var(--blue); }
+.announcement-help { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.announcement-field-error { margin: 0; color: var(--danger); font-size: 12px; }
+.game-pinning { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding-bottom: 20px; }
+.game-pinning > span { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.admin-pinned-label { display: inline-block; margin-left: 7px; padding: 1px 5px; border-radius: 4px; background: var(--blue-soft); color: var(--blue-dark); font-size: 10px; vertical-align: middle; }
 .admin-page { min-height: 100dvh; padding: 0; background: var(--page-bg); }
 .admin-page .admin-shell { width: 100%; display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 0; align-items: stretch; }
 .admin-page .admin-sidebar { position: sticky; top: 0; height: 100dvh; padding: 28px 16px 18px; display: flex; flex-direction: column; gap: 0; background: var(--surface); border-right: 1px solid var(--line); }
@@ -216,8 +227,8 @@ html.dark .editor-title > .admin-status.draft { color: #fcd34d; border-color: #8
 .editor-segments button:disabled { cursor: not-allowed; opacity: .65; }
 .required-mark { color: var(--danger); margin-left: 2px; }
 .optional-mark { font-weight: 400; margin-left: 5px; color: var(--muted); font-size: 12px; }
-.admin-editor-dialog.el-dialog .game-editor :is(input:not([type="file"]), select, textarea) { width: 100%; border-radius: 8px; border: 1px solid var(--editor-control-border); padding: 10px 12px; background: #fff; color: var(--editor-input-ink); color-scheme: light; font-size: 14px; font-weight: 400; transition: border-color .15s, box-shadow .15s; }
-.admin-editor-dialog .game-editor :is(input:not([type="file"]), select) { height: 42px; }
+.admin-editor-dialog.el-dialog .game-editor :is(input:not([type="file"]):not([type="checkbox"]), select, textarea) { width: 100%; border-radius: 8px; border: 1px solid var(--editor-control-border); padding: 10px 12px; background: #fff; color: var(--editor-input-ink); color-scheme: light; font-size: 14px; font-weight: 400; transition: border-color .15s, box-shadow .15s; }
+.admin-editor-dialog .game-editor :is(input:not([type="file"]):not([type="checkbox"]), select) { height: 42px; }
 .admin-editor-dialog .game-editor :is(input, textarea)::placeholder { color: var(--editor-placeholder); opacity: 1; }
 .admin-editor-dialog .game-editor select:has(option:checked:disabled) { color: var(--editor-placeholder); }
 .admin-editor-dialog .game-editor :is(input, select, textarea):hover:not(:disabled):not(:focus) { border-color: #94a3b8; }

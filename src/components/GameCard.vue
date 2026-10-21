@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CalendarDays, Gamepad2 } from 'lucide-vue-next'
+import { CalendarDays, Gamepad2, Pin } from 'lucide-vue-next'
 import type { GameSummary } from '@/types/game'
 
 const props = defineProps<{ game: GameSummary; returnTo?: string }>()
@@ -12,6 +12,7 @@ const publishedDate = computed(() => props.game.publishAt?.slice(0, 10) || '日�
 <template>
   <RouterLink :to="{ path: `/games/${game.slug}`, state: { catalogReturnTo: returnTo ?? null } }" class="game-card">
     <div class="game-cover-wrap">
+      <span v-if="game.isPinned" class="pinned-badge"><Pin :size="12" aria-hidden="true" />置顶</span>
       <img v-if="!coverFailed" :src="game.cover" :alt="`${game.name} 游戏封面`" class="game-cover" loading="lazy" decoding="async" @error="coverFailed = true" />
       <div v-else class="game-cover-fallback"><Gamepad2 :size="28" /><span>封面暂不可用</span></div>
       <span :class="['resource-badge', game.resourceType]">{{ game.resourceType === 'free' ? '免费' : '会员' }}</span>

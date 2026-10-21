@@ -15,6 +15,7 @@ export interface DownloadSource {
 export type DescriptionFormat = 'plain' | 'markdown'
 
 export interface GameSummary {
+  isPinned: boolean
   id: number
   slug: string
   name: string

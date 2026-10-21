@@ -3,6 +3,7 @@ import { createMiddleware } from 'hono/factory'
 import { z } from 'zod'
 import { serializeUser } from './auth'
 import { uploadImage } from './media'
+import { announcementQuerySchema, announcementSchema } from './announcements'
 import type { AppEnv, AuthUser } from './types'
 
 const admin = new Hono<AppEnv>()
@@ -28,6 +29,55 @@ const requireAdmin = createMiddleware<AppEnv>(async (context, next) => {
 
 admin.use('*', requireAdmin)
 admin.post('/uploads/images', uploadImage)
+
+admin.get('/announcements', async context => {
+  const parsed = announcementQuerySchema.safeParse(context.req.query())
+  if (!parsed.success) return fail(context, 400, 'INVALID_QUERY', '公告筛选参数无效。')
+  const { q, status, showPopup } = parsed.data
+  const conditions = ['1 = 1']
+  const bindings: Array<string | number> = []
+  if (q) { conditions.push('(title LIKE ? OR content LIKE ?)'); bindings.push(`%${q}%`, `%${q}%`) }
+  if (status) { conditions.push('status = ?'); bindings.push(status) }
+  if (showPopup !== undefined) { conditions.push('show_popup = ?'); bindings.push(Number(showPopup)) }
+  const from = `FROM announcements WHERE ${conditions.join(' AND ')}`
+  const pagination = await listPagination(context.env.DB, from, bindings, parsed.data.page)
+  const result = await context.env.DB.prepare(`SELECT id, title, status, show_popup, created_at, updated_at ${from}
+    ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...bindings, pagination.pageSize, (pagination.page - 1) * pagination.pageSize).all()
+  return context.json({ ok: true, data: { items: result.results, pagination } })
+})
+admin.get('/announcements/:id', async context => {
+  const id = z.coerce.number().int().positive().safeParse(context.req.param('id'))
+  if (!id.success) return fail(context, 400, 'INVALID_ID', '公告 ID 无效。')
+  const row = await context.env.DB.prepare('SELECT * FROM announcements WHERE id = ?').bind(id.data).first()
+  if (!row) return fail(context, 404, 'ANNOUNCEMENT_NOT_FOUND', '公告不存在。')
+  return context.json({ ok: true, data: row })
+})
+admin.post('/announcements', async context => {
+  const parsed = await parseJson(context, announcementSchema)
+  if (!parsed.success) return parsed.response
+  const { title, content, status, showPopup } = parsed.data
+  const result = await context.env.DB.prepare('INSERT INTO announcements (title, content, status, show_popup) VALUES (?, ?, ?, ?)')
+    .bind(title, content, status, Number(showPopup)).run()
+  return context.json({ ok: true, data: { id: Number(result.meta.last_row_id) } }, 201)
+})
+admin.put('/announcements/:id', async context => {
+  const id = z.coerce.number().int().positive().safeParse(context.req.param('id'))
+  if (!id.success) return fail(context, 400, 'INVALID_ID', '公告 ID 无效。')
+  const parsed = await parseJson(context, announcementSchema)
+  if (!parsed.success) return parsed.response
+  const { title, content, status, showPopup } = parsed.data
+  const result = await context.env.DB.prepare(`UPDATE announcements SET title = ?, content = ?, status = ?, show_popup = ?,
+    updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(title, content, status, Number(showPopup), id.data).run()
+  if (!result.meta.changes) return fail(context, 404, 'ANNOUNCEMENT_NOT_FOUND', '公告不存在。')
+  return context.json({ ok: true, data: null })
+})
+admin.delete('/announcements/:id', async context => {
+  const id = z.coerce.number().int().positive().safeParse(context.req.param('id'))
+  if (!id.success) return fail(context, 400, 'INVALID_ID', '公告 ID 无效。')
+  const result = await context.env.DB.prepare('DELETE FROM announcements WHERE id = ?').bind(id.data).run()
+  if (!result.meta.changes) return fail(context, 404, 'ANNOUNCEMENT_NOT_FOUND', '公告不存在。')
+  return context.json({ ok: true, data: null })
+})
 
 admin.get('/overview', async (context) => {
   const [users, games, orders, feedback] = await context.env.DB.batch([
@@ -306,6 +356,7 @@ const gameSchema = z.object({
   coverUrl: z.string().trim().min(1).max(1000),
   description: z.string().min(10).max(30000).refine((value) => value.trim().length >= 10),
   descriptionFormat: z.enum(['plain', 'markdown']).optional(),
+  isPinned: z.boolean().optional(),
   minConfig: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
   categoryId: z.number().int().positive(),
   resourceType: z.enum(['free', 'member']),
@@ -346,9 +397,9 @@ admin.get('/games', async (context) => {
   const page = Math.min(parsed.data.page, Math.max(1, Math.ceil(total / pageSize)))
   const offset = (page - 1) * pageSize
   const result = await context.env.DB.prepare(`
-    SELECT g.id, g.name, g.slug, g.cover_url, g.resource_type, g.resource_status, g.status, g.publish_at,
+    SELECT g.id, g.name, g.slug, g.cover_url, g.is_pinned, g.resource_type, g.resource_status, g.status, g.publish_at,
            c.name AS category FROM games g JOIN categories c ON c.id = g.category_id
-    WHERE ${filters} ORDER BY g.created_at DESC, g.id DESC LIMIT ? OFFSET ?
+    WHERE ${filters} ORDER BY g.is_pinned DESC, g.created_at DESC, g.id DESC LIMIT ? OFFSET ?
   `).bind(...bindings, pageSize, offset).all()
   return context.json({ ok: true, data: {
     games: result.results,
@@ -373,10 +424,10 @@ admin.post('/games', async (context) => {
   try {
     const value = parsed.data
     const result = await context.env.DB.prepare(`
-      INSERT INTO games (name, slug, cover_url, description, description_format, min_config, category_id, resource_type, resource_status, status, publish_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO games (name, slug, cover_url, description, description_format, min_config, category_id, resource_type, resource_status, status, publish_at, is_pinned)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(value.name, value.slug, value.coverUrl, value.description, value.descriptionFormat ?? 'plain', JSON.stringify(value.minConfig), value.categoryId,
-      value.resourceType, value.resourceStatus, value.status, value.publishAt || null).run()
+      value.resourceType, value.resourceStatus, value.status, value.publishAt || null, Number(value.isPinned ?? false)).run()
     const gameId = Number(result.meta.last_row_id)
     await context.env.DB.batch(gameRelations(context.env.DB, gameId, value.tagIds, value.downloads))
     return context.json({ ok: true, data: { id: gameId } }, 201)
@@ -394,10 +445,10 @@ admin.put('/games/:id', async (context) => {
   try {
     const statements = [context.env.DB.prepare(`
       UPDATE games SET name = ?, slug = ?, cover_url = ?, description = ?, description_format = COALESCE(?, description_format), min_config = ?, category_id = ?,
-        resource_type = ?, resource_status = ?, status = ?, publish_at = ?, updated_at = CURRENT_TIMESTAMP
+        resource_type = ?, resource_status = ?, status = ?, publish_at = ?, is_pinned = COALESCE(?, is_pinned), updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND deleted_at IS NULL
     `).bind(value.name, value.slug, value.coverUrl, value.description, value.descriptionFormat ?? null, JSON.stringify(value.minConfig), value.categoryId,
-      value.resourceType, value.resourceStatus, value.status, value.publishAt || null, gameId),
+      value.resourceType, value.resourceStatus, value.status, value.publishAt || null, value.isPinned === undefined ? null : Number(value.isPinned), gameId),
     context.env.DB.prepare('DELETE FROM game_tags WHERE game_id = ?').bind(gameId),
     context.env.DB.prepare('DELETE FROM game_downloads WHERE game_id = ?').bind(gameId),
     ...gameRelations(context.env.DB, gameId, value.tagIds, value.downloads)]

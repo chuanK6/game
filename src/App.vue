@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import AppHeader from '@/components/AppHeader.vue'
+import AnnouncementDialog from '@/components/AnnouncementDialog.vue'
+import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 const route = useRoute()
+const announcements = ref<InstanceType<typeof AnnouncementDialog>>()
 
 function disableLeavingPage(element: Element) {
   element.setAttribute('inert', '')
@@ -16,7 +19,8 @@ function enablePage(element: Element) {
 
 <template>
   <div class="app-shell">
-    <AppHeader v-if="route.path !== '/admin'" />
+    <AppHeader v-if="route.path !== '/admin'" @open-announcements="announcements?.open()" />
+    <AnnouncementDialog ref="announcements" />
     <main class="route-stage">
       <RouterView v-slot="{ Component, route }">
         <Transition name="page" @before-leave="disableLeavingPage" @before-enter="enablePage" @leave-cancelled="enablePage">

@@ -11,6 +11,7 @@ function fixture(extra = 0) {
   for (const name of ['0001_initial.sql', '0002_auth_attempts.sql', '0003_game_description_format.sql']) sqlite.exec(readFileSync(new URL(`../../worker/migrations/${name}`, import.meta.url), 'utf8'))
   sqlite.exec("INSERT INTO users (id, username, password_hash) VALUES (1, 's0xu', 'test')")
   sqlite.exec(readFileSync(new URL('../../worker/migrations/0004_user_management.sql', import.meta.url), 'utf8'))
+  sqlite.exec(readFileSync(new URL('../../worker/migrations/0005_announcements_and_pinned_games.sql', import.meta.url), 'utf8'))
   const insert = sqlite.prepare('INSERT INTO users (id, username, password_hash, role, member_type, member_expire_at) VALUES (?, ?, ?, ?, ?, ?)')
   insert.run(2, '测试管理员', 'test', 'admin', 'none', null)
   insert.run(3, '其他管理员', 'test', 'admin', 'monthly', '2020-01-01 00:00:00')

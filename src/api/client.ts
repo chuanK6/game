@@ -16,6 +16,12 @@ type ErrorResponse = { ok: false; error: { code: string; message: string } }
 
 export type Pagination = { page: number; pageSize: number; total: number }
 
+export type AnnouncementSummary = { id: number; title: string; created_at: string; updated_at: string }
+export type Announcement = AnnouncementSummary & { content: string; status: 'draft' | 'published' | 'archived'; show_popup: number }
+export type AdminAnnouncementSummary = Omit<Announcement, 'content'>
+export type AnnouncementPayload = { title: string; content: string; status: Announcement['status']; showPopup: boolean }
+export type AnnouncementsQuery = { q?: string; page?: number; status?: Announcement['status']; showPopup?: '0' | '1' }
+
 export type CurrentUser = {
   id: number
   username: string
@@ -65,6 +71,7 @@ export type AdminList<T> = { items: T[]; pagination: Pagination }
 export type AdminOrder = MembershipOrder & { user_id: number; username: string }
 export type AdminFeedback = FeedbackItem & { username: string }
 export type AdminGame = {
+  is_pinned: number
   id: number; name: string; slug: string; cover_url: string; resource_type: 'free' | 'member'
   resource_status: 'available' | 'checking' | 'unavailable'; status: 'draft' | 'published' | 'offline'
   publish_at: string | null; category: string
@@ -72,6 +79,7 @@ export type AdminGame = {
 export type AdminGameList = { games: AdminGame[]; pagination: Pagination }
 export type AdminGamesQuery = { q?: string; page?: number; categoryId?: number; resourceType?: 'free' | 'member'; status?: AdminGame['status'] }
 export type AdminGameDetail = {
+  is_pinned: number
   id: number; name: string; slug: string; cover_url: string; description: string; min_config: string
   description_format: DescriptionFormat
   category_id: number; resource_type: 'free' | 'member'; resource_status: 'available' | 'checking' | 'unavailable'
@@ -89,6 +97,7 @@ export type TaxonomyPayload = {
   sort?: number
 }
 export type GamePayload = {
+  isPinned: boolean
   name: string; slug: string; coverUrl: string; description: string; minConfig: string[]; categoryId: number
   descriptionFormat: DescriptionFormat
   resourceType: 'free' | 'member'; resourceStatus: 'available' | 'checking' | 'unavailable'
@@ -134,6 +143,12 @@ export const catalogApi = {
   downloads: (slug: string) => apiRequest<DownloadSource[]>(`/games/${encodeURIComponent(slug)}/downloads`),
 }
 
+export const announcementsApi = {
+  latest: (popup = false, signal?: AbortSignal) => apiRequest<Announcement | null>(`/announcements/latest${popup ? '?popup=1' : ''}`, { signal }),
+  list: (page = 1, signal?: AbortSignal) => apiRequest<AdminList<AnnouncementSummary>>(`/announcements?page=${page}`, { signal }),
+  detail: (id: number, signal?: AbortSignal) => apiRequest<Announcement>(`/announcements/${id}`, { signal }),
+}
+
 export const authApi = {
   me: () => withRequestTimeout(signal => apiRequest<CurrentUser | null>('/auth/me', { signal }), 8000),
   login: (username: string, password: string) => apiRequest<CurrentUser>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -159,6 +174,11 @@ function queryParams(query: Record<string, string | number | undefined>) {
 }
 
 export const adminApi = {
+  announcements: (query: AnnouncementsQuery = {}, signal?: AbortSignal) => apiRequest<AdminList<AdminAnnouncementSummary>>(`/admin/announcements?${queryParams(query)}`, { signal }),
+  announcement: (id: number, signal?: AbortSignal) => apiRequest<Announcement>(`/admin/announcements/${id}`, { signal }),
+  createAnnouncement: (payload: AnnouncementPayload) => apiRequest<{ id: number }>('/admin/announcements', { method: 'POST', body: JSON.stringify(payload) }),
+  updateAnnouncement: (id: number, payload: AnnouncementPayload) => apiRequest<null>(`/admin/announcements/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteAnnouncement: (id: number) => apiRequest<null>(`/admin/announcements/${id}`, { method: 'DELETE' }),
   uploadImage: (file: File, purpose: 'cover' | 'content', signal?: AbortSignal) => {
     const body = new FormData()
     body.append('file', file)

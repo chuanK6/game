@@ -36,6 +36,7 @@ export function configFromLines(lines: string[]): ConfigFields {
 export function createGameForm(game: AdminGameDetail | null): GameForm {
   return {
     id: game?.id, name: game?.name ?? '', slug: game?.slug ?? '', coverUrl: game?.cover_url ?? '',
+    isPinned: game?.is_pinned === 1,
     description: game?.description ?? '', descriptionFormat: game ? game.description_format ?? 'plain' : 'markdown',
     config: configFromLines(game ? JSON.parse(game.min_config) : []), categoryId: game?.category_id ?? 0,
     resourceType: game?.resource_type ?? 'free', resourceStatus: game?.resource_status ?? 'available', status: game?.status ?? 'draft',
@@ -72,6 +73,7 @@ export function gameFormIssues(form: GameForm): FormIssue[] {
 export function gamePayload(form: GameForm): GamePayload {
   return {
     name: form.name.trim(), slug: form.slug, coverUrl: form.coverUrl.trim(), description: form.description,
+    isPinned: form.isPinned,
     descriptionFormat: form.descriptionFormat, minConfig: configToLines(form.config), categoryId: form.categoryId,
     resourceType: form.resourceType, resourceStatus: form.resourceStatus, status: form.status, publishAt: form.publishAt || null,
     tagIds: [...form.tagIds], downloads: form.downloads.filter(hasDownload).map((row, index) => ({ provider: row.provider.trim(), label: row.label.trim(), url: row.url.trim(), sort: index * 10 })),

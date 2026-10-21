@@ -5,7 +5,7 @@ import { Bold, Code, CodeXml, Heading2, ImagePlus, Italic, Link, List, ListOrder
 import MarkdownContent from './MarkdownContent.vue'
 import { uploadImage } from '@/utils/imageUpload'
 
-const props = defineProps<{ modelValue: string; disabled?: boolean }>()
+const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean; label?: string }>(), { label: '游戏介绍' })
 const emit = defineEmits<{ 'update:modelValue': [value: string]; uploading: [value: boolean] }>()
 const textarea = ref<HTMLTextAreaElement>()
 const preview = ref<HTMLDivElement>()
@@ -315,8 +315,8 @@ onBeforeUnmount(() => { disposed = true; cancelAnimationFrame(scrollFrame); cont
     </div>
     </div>
     <div :class="['markdown-editor-panes', `mode-${mode}`]">
-      <textarea ref="textarea" class="markdown-source" :value="modelValue" :readonly="busy" maxlength="30000" aria-label="游戏介绍 Markdown" placeholder="输入游戏介绍，支持标题、列表、表格和图片。可粘贴截图或拖入图片。" @beforeinput="beforeInput" @input="input" @keydown="keyboardShortcut" @select="rememberSelection" @click="rememberSelection" @keyup="rememberSelection" @blur="rememberSelection" @paste="paste" @dragover.prevent @drop="drop"></textarea>
-      <div ref="preview" class="markdown-preview" aria-label="游戏介绍预览"><MarkdownContent v-if="modelValue" :content="modelValue" /><p v-else class="markdown-placeholder">预览会显示在这里</p></div>
+      <textarea ref="textarea" class="markdown-source" :value="modelValue" :readonly="busy" maxlength="30000" :aria-label="`${label} Markdown`" :placeholder="`输入${label}，支持标题、列表、表格和图片。可粘贴截图或拖入图片。`" @beforeinput="beforeInput" @input="input" @keydown="keyboardShortcut" @select="rememberSelection" @click="rememberSelection" @keyup="rememberSelection" @blur="rememberSelection" @paste="paste" @dragover.prevent @drop="drop"></textarea>
+      <div ref="preview" class="markdown-preview" :aria-label="`${label}预览`"><MarkdownContent v-if="modelValue" :content="modelValue" /><p v-else class="markdown-placeholder">预览会显示在这里</p></div>
     </div>
     <div class="markdown-editor-footer"><span>{{ modelValue.length }} / 30000</span></div>
     <div v-if="uploading" class="markdown-upload-status" role="status">{{ uploadStatus }}<button type="button" @click="cancelUpload">取消上传</button></div>

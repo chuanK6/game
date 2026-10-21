@@ -1,0 +1,34 @@
+.pinned-badge { position: absolute; z-index: 1; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 4px; color: #fff; background: var(--blue); font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px #0002; }
+.announcement-dialog.el-dialog { display: flex; flex-direction: column; max-height: 86dvh; padding: 0; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--surface); overflow: hidden; }
+.announcement-dialog .el-dialog__header { padding: 20px 24px; margin: 0; border-bottom: 1px solid var(--line); }
+.announcement-dialog .el-dialog__title { font-size: 18px; font-weight: 700; }
+.announcement-dialog .el-dialog__body { display: flex; flex-direction: column; min-height: 0; padding: 0; color: var(--ink); }
+.announcement-tabs { flex: none; display: flex; gap: 22px; padding: 0 24px; border-bottom: 1px solid var(--line); }
+.announcement-tabs button { min-height: 46px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; }
+.announcement-tabs button[aria-pressed="true"] { border-bottom-color: var(--blue); color: var(--blue-dark); }
+.announcement-body { min-height: 200px; padding: 24px; overflow-y: auto; overscroll-behavior: contain; }
+.announcement-article h2 { margin: 0 0 10px; color: var(--ink); font-size: 22px; line-height: 1.5; overflow-wrap: anywhere; }
+.announcement-article > time { display: block; margin-bottom: 24px; color: var(--muted); font-size: 12px; }
+.announcement-empty { display: grid; min-height: 180px; align-content: center; justify-items: center; gap: 12px; text-align: center; color: var(--muted); }
+.announcement-empty p { margin: 0; }
+.announcement-history { margin: 0; padding: 0; list-style: none; }
+.announcement-history li + li { border-top: 1px solid var(--line); }
+.announcement-history button { display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; padding: 18px 4px; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.announcement-history button:hover { color: var(--blue-dark); }
+.announcement-history span { overflow-wrap: anywhere; min-width: 0; }
+.announcement-history time { flex-shrink: 0; color: var(--muted); font-size: 12px; }
+.announcement-history-pagination { justify-content: center; margin-top: 18px; }
+.announcement-back { display: inline-flex; align-items: center; gap: 6px; padding: 0; margin-bottom: 20px; border: 0; background: transparent; color: var(--blue-dark); font-size: 13px; }
+.announcement-dialog .el-dialog__footer { padding: 16px 24px; border-top: 1px solid var(--line); }
+.announcement-footer { display: flex; justify-content: flex-end; gap: 10px; }
+.announcement-footer .el-button + .el-button { margin: 0; }
+.announcement-dialog :is(button, a):focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .pinned-badge { left: 6px; top: 6px; padding: 4px 6px; font-size: 10px; }
+  .announcement-dialog .el-dialog__header { padding: 17px 16px; }
+  .announcement-tabs { padding: 0 16px; }
+  .announcement-body { padding: 18px 16px; }
+  .announcement-article h2 { font-size: 19px; }
+  .announcement-history button { gap: 12px; font-size: 13px; }
+  .announcement-dialog .el-dialog__footer { padding: 14px 16px; }
+}

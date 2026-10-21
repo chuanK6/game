@@ -8,6 +8,7 @@ function catalogFixture(count = 180) {
   const database = new DatabaseSync(':memory:')
   database.exec(readFileSync(new URL('../../worker/migrations/0001_initial.sql', import.meta.url), 'utf8'))
   database.exec(readFileSync(new URL('../../worker/migrations/0003_game_description_format.sql', import.meta.url), 'utf8'))
+  database.exec(readFileSync(new URL('../../worker/migrations/0005_announcements_and_pinned_games.sql', import.meta.url), 'utf8'))
   database.exec("INSERT INTO categories (name, slug) VALUES ('动作', 'action'), ('冒险', 'adventure')")
   database.exec("INSERT INTO tags (name, slug) VALUES ('开放世界', 'open-world'), ('多人合作', 'coop'), ('旧标签', 'old-tag')")
   const insert = database.prepare("INSERT INTO games (name, slug, cover_url, description, min_config, category_id, resource_type, status, publish_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?)")

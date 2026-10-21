@@ -62,7 +62,7 @@ npm run typecheck:api
 
 ## 生产部署
 
-先执行远程迁移（包括 `0003_game_description_format.sql` 和 `0004_user_management.sql`，已有介绍保留为纯文本，新增超级管理员标记与最近登录时间）：
+先执行远程迁移（包含 `0003` Markdown、`0004` 用户管理及 `0005_announcements_and_pinned_games.sql` 公告与游戏置顶迁移）：
 
 ```bash
 npm run db:migrate:remote
@@ -79,7 +79,7 @@ npm run deploy
 - `POST /api/admin/uploads/images` 使用登录 Cookie 和管理员权限，接收 `multipart/form-data` 的 `file` 与 `purpose`（`cover` / `content`），返回 `{ ok: true, data: { key, url } }`。
 - 支持 JPG、PNG、WebP，每张最多 5 MB。服务端限制实际请求大小并检查文件签名和 MIME；浏览器会按需缩小 JPEG/PNG 大图。
 - `wrangler dev` 默认使用本地 R2，上传返回 `/api/media/images/...`；线上返回图片自定义域名。公开图片读取支持 HEAD、ETag 和长期缓存，并跳过会话/D1 查询。
-- 图片按随机文件名保存到 `images/cover/` 和 `images/content/`。第一版保留上传后未使用的图片；清理前须检查游戏封面和正文（包括草稿）的引用。
+- 图片按随机文件名保存到 `images/cover/` 和 `images/content/`。第一版保留上传后未使用的图片；清理前须检查游戏封面、正文和公告（包括草稿）的引用。
 - 正文保存在 D1 的 `description`，格式保存在 `description_format`。新建游戏默认 `markdown`，旧数据为 `plain`；旧客户端省略格式字段时，更新操作保留原格式。
 - 后台支持编辑/预览、桌面双栏、全屏、上传失败重试；上传期间暂停正文编辑并禁用保存。关闭表单会取消上传，避免结果回填其他游戏。
 - 旧介绍可继续直接编辑，或点击“转换为 Markdown”，预览后采用。转换及其他编辑仅在“保存游戏”后持久化。
@@ -94,6 +94,16 @@ npm run deploy
 - 封面提供 16:9 预览、拖拽上传和地址输入；标签以胶囊按钮选择。下载默认显示一行，空白行不保存，部分填写的行必须补全。
 - 游戏资源支持搜索名称/Slug，并组合分类、免费/会员和发布状态筛选。接口参数为 `q`、`categoryId`、`resourceType`、`status`、`page`；每页固定 10 条，越界页码自动回退。
 - 列表缓存仅在当前后台组件内存中存在，最多 6 页/60 条，30 秒过期；修改游戏、分类标签、删除、手动刷新都会清除相关缓存。离开后台取消请求并释放缓存。
+
+## 公告与游戏置顶
+
+- 新建/编辑游戏的基础信息可设置“置顶游戏”。数据库使用 `games.is_pinned`，公开接口返回 `isPinned`；置顶游戏在筛选结果内优先排序，卡片左上角展示置顶标志。旧客户端更新时省略该字段会保留原值。
+- 后台侧栏第二项“公告管理”支持新增、点击标题编辑、删除，以及标题/正文搜索、发布状态和自动弹窗组合筛选；服务端每页 10 条。正文复用游戏 Markdown 编辑器、图片上传与安全渲染，最多 30000 字符。
+- 公告状态为草稿、已发布、已归档；公开列表与详情只提供已发布公告。所有公告按 `created_at DESC, id DESC` 排序，修改旧公告不会改变创建时间。
+- 进入前台时自动展示最新一条已发布且开启自动弹窗的公告；后台不自动弹出。顶部右侧铃铛可随时手动查看最新已发布公告，并通过“往期公告”分页列表进入详情和返回。
+- “本次关闭”在当前页面访问期间生效，站内切页不会再次弹出；刷新或重新进入会重新检查。“本日关闭”按北京时间保存到本浏览器的 localStorage，当天停止自动弹出，铃铛仍可手动打开。浏览器禁止存储时在当前访问期间生效。
+- 接口：公开 `/api/announcements`、`/latest`（`popup=1` 只查自动弹窗）及 `/:id`；管理员 `/api/admin/announcements` 和 `/:id` 提供查询与 CRUD，并沿用服务端管理员鉴权。
+- 发布前先执行 `npm run db:migrate:remote`，再执行 `npm run deploy`。相关测试：`npx playwright test tests/e2e/announcements.spec.ts`。
 
 ## 前端游戏库筛选与分页
 

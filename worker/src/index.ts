@@ -5,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { z } from 'zod'
 import { clearSession, createSession, hashPassword, readSession, serializeUser, sha256, verifyPassword } from './auth'
 import admin from './admin'
+import announcements from './announcements'
 import media from './media'
 import type { AppEnv } from './types'
 
@@ -17,6 +18,7 @@ type GameRow = {
   description_format: 'plain' | 'markdown'
   min_config: string
   resource_type: 'free' | 'member'
+  is_pinned: number
   resource_status: 'available' | 'checking' | 'unavailable'
   publish_at: string
   category: string
@@ -260,7 +262,7 @@ app.get('/games', async (context) => {
   const page = Math.min(parsed.data.page, Math.max(1, Math.ceil(total / pageSize)))
   const offset = (page - 1) * pageSize
   const result = await context.env.DB.prepare(`${gameSelectSql(false)} WHERE ${where}
-    GROUP BY g.id ORDER BY g.publish_at DESC, g.id DESC LIMIT ? OFFSET ?
+    GROUP BY g.id ORDER BY g.is_pinned DESC, g.publish_at DESC, g.id DESC LIMIT ? OFFSET ?
   `).bind(...bindings, pageSize, offset).all<GameSummaryRow>()
 
   return context.json({
@@ -366,9 +368,10 @@ app.get('/membership/orders', requireAuth, async (context) => {
 })
 
 app.route('/admin', admin)
+app.route('/announcements', announcements)
 
 const gameSelectSql = (details: boolean) => `
-  SELECT g.id, g.slug, g.name, g.cover_url, ${details ? 'g.description, g.description_format, g.min_config,' : ''} g.resource_type,
+  SELECT g.id, g.slug, g.name, g.cover_url, g.is_pinned, ${details ? 'g.description, g.description_format, g.min_config,' : ''} g.resource_type,
          g.resource_status, g.publish_at, c.name AS category, c.slug AS category_slug,
          GROUP_CONCAT(DISTINCT CASE WHEN t.id IS NOT NULL THEN t.slug || char(31) || t.name END) AS tag_pairs
   FROM games g
@@ -387,6 +390,7 @@ function serializeGameSummary(row: GameSummaryRow) {
     slug: row.slug,
     name: row.name,
     cover: row.cover_url,
+    isPinned: row.is_pinned === 1,
     resourceType: row.resource_type,
     resourceStatus: row.resource_status,
     publishAt: row.publish_at,

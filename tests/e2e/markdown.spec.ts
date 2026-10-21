@@ -36,6 +36,7 @@ function fixture() {
     .run('旧游戏', 'legacy-game', 'https://res.cloudinary.com/demo/image/upload/legacy.jpg', legacyText, '["操作系统：Windows 10"]')
   sqlite.exec(readFileSync(new URL('../../worker/migrations/0003_game_description_format.sql', import.meta.url), 'utf8'))
   sqlite.exec(readFileSync(new URL('../../worker/migrations/0004_user_management.sql', import.meta.url), 'utf8'))
+  sqlite.exec(readFileSync(new URL('../../worker/migrations/0005_announcements_and_pinned_games.sql', import.meta.url), 'utf8'))
   function prepare(sql: string) {
     const statement = sqlite.prepare(sql)
     let values: SQLInputValue[] = []

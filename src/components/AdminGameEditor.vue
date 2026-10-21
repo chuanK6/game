@@ -135,6 +135,7 @@ async function save() {
     <form ref="editorElement" class="game-editor tabbed-game-editor" novalidate @submit.prevent="save">
       <p v-if="submitted && issues.length" class="editor-validation" role="alert">还有 {{ issues.length }} 项需要完善。{{ currentIssues[0]?.message || '请检查带红点的页签。' }}<button type="button" @click="focusIssue">定位首个问题</button></p>
       <section v-show="currentTab === 'basic'" id="editor-panel-basic" class="editor-panel" role="tabpanel" aria-labelledby="editor-tab-basic">
+        <div class="game-pinning"><label><input v-model="form.isPinned" type="checkbox" :disabled="saving" />置顶游戏</label><span>置顶后优先显示在游戏列表，卡片左上角显示置顶标志。</span></div>
         <div class="editor-field-grid">
           <div class="editor-field"><label for="game-name">游戏名称 <span class="required-mark">*</span></label><input id="game-name" v-model="form.name" maxlength="100" placeholder="例如 双人成行" required :disabled="saving" :aria-invalid="Boolean(fieldError('game-name'))" :aria-describedby="fieldError('game-name') ? 'error-game-name' : undefined" /><small v-if="fieldError('game-name')" id="error-game-name" class="field-error">{{ fieldError('game-name') }}</small></div>
           <div class="editor-field"><label for="game-slug">Slug <span class="required-mark">*</span></label><input id="game-slug" v-model.trim="form.slug" maxlength="100" placeholder="example-game" title="详情页网址：小写字母、数字和连字符" required :disabled="saving" :aria-invalid="Boolean(fieldError('game-slug'))" /><small v-if="fieldError('game-slug')" class="field-error">{{ fieldError('game-slug') }}</small></div>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Menu, Moon, Search, Sun, UserRound, X } from 'lucide-vue-next'
+import { Bell, Menu, Moon, Search, Sun, UserRound, X } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { navigationError, navigationPending } from '@/router'
 
 const router = useRouter()
+const emit = defineEmits<{ openAnnouncements: [] }>()
 const auth = useAuthStore()
 const theme = useThemeStore()
 const keyword = ref('')
@@ -38,6 +39,7 @@ function closeMenu() {
       </nav>
 
       <div class="header-actions">
+        <button type="button" class="icon-button announcement-bell" aria-label="查看网站公告" title="网站公告" @click="closeMenu(); emit('openAnnouncements')"><Bell :size="19" aria-hidden="true" /></button>
         <form class="header-search" role="search" @submit.prevent="search">
           <Search :size="17" aria-hidden="true" />
           <input v-model="keyword" aria-label="搜索游戏" placeholder="搜索游戏" maxlength="80" />
