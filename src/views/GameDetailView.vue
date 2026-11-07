@@ -9,6 +9,8 @@ import { useAuthStore } from '@/stores/auth'
 import MarkdownContent from '@/components/MarkdownContent.vue'
 import { safeCatalogPath } from '@/utils/catalogQuery'
 import { withRequestTimeout } from '@/utils/requestTimeout'
+import { gameMetadata, pageMetadata } from '@/utils/seo'
+import { setPageMetadata } from '@/utils/pageSeo'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,8 +43,11 @@ const requirements = computed(() => (game.value?.minConfig ?? []).filter((item) 
 function syncReturnPath() {
   returnPath.value = safeCatalogPath(window.history.state?.catalogReturnTo) ?? safeCatalogPath(window.history.state?.back) ?? '/games'
 }
-const stopAfterNavigation = router.afterEach(to => {
-  if (to.name === 'game-detail' && String(to.params.slug) === slug) syncReturnPath()
+const stopAfterNavigation = router.afterEach((to, _from, failure) => {
+  if (!failure && to.name === 'game-detail' && String(to.params.slug) === slug) {
+    syncReturnPath()
+    if (game.value) setPageMetadata(gameMetadata(game.value))
+  }
 })
 onMounted(() => {
   syncReturnPath()
@@ -61,11 +66,19 @@ async function loadGame() {
   coverFailed.value = false
   try {
     const result = await withRequestTimeout(signal => catalogApi.game(slug, signal), 15000, request.signal)
-    if (!disposed && !request.signal.aborted && detailRequest === request) game.value = result
+    if (!disposed && !request.signal.aborted && detailRequest === request) {
+      game.value = result
+      if (router.currentRoute.value.name === 'game-detail' && String(router.currentRoute.value.params.slug) === slug) setPageMetadata(gameMetadata(result))
+    }
   } catch (error) {
     if (disposed || request.signal.aborted || detailRequest !== request) return
     game.value = null
     loadError.value = error instanceof ApiError ? error.message : '游戏详情加载失败。'
+    if (router.currentRoute.value.name === 'game-detail' && String(router.currentRoute.value.params.slug) === slug) {
+      const metadata = pageMetadata(route.path)
+      if (error instanceof ApiError && error.status === 404) metadata.title = '游戏不可用｜游浪'
+      setPageMetadata(metadata)
+    }
   } finally {
     if (!disposed && detailRequest === request) loading.value = false
   }

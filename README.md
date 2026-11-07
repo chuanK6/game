@@ -113,6 +113,28 @@ npm run deploy
 - 从列表进入详情后，返回游戏库恢复原筛选、页码与滚动位置；浏览器后退也等待页面内容就绪后恢复滚动。翻页滚动至结果区，筛选变化保持浏览位置。
 - 搜索限制为 80 字符；卡片坏图显示占位，首页与详情加载有超时/取消，首页不自动聚焦搜索框。
 
+## 搜索引擎收录
+
+- 继续使用现有 Vue SPA。Worker 只改写初始 HTML 的标题、简介、canonical 和 robots；游戏正文仍由 Vue 与 API 加载，并未改成 SSR。
+- 游戏详情标题自动使用“游戏名称｜游浪”。简介从介绍中提取纯文本，Markdown 标题、链接格式和图片被清理，空介绍使用站点简介；超出 160 个 Unicode 字符时截断并加省略号。无需在后台额外填写。
+- 前端成功切页时同步更新 SEO 信息；详情请求失败或已离开页面时不会把旧游戏信息留到其他页面。
+- `/robots.txt` 标注正式站点的 `/sitemap.xml`。站点地图使用索引，静态公开页在 `/sitemaps/pages.xml`，每 1000 个已发布且未删除游戏生成一个 `/sitemaps/games-N.xml`；不包含草稿、下架游戏、个人页面或下载链接。
+- sitemap 根据 D1 当前数据动态生成，响应缓存最多 60 秒；游戏的 `lastmod` 使用真实 `updated_at`，不是抓取时间。HTML 使用 `no-store`，避免不同页面共用旧标题。
+- 首页、无筛选游戏库、有效分页和已发布详情允许收录；搜索/筛选组合、登录、个人中心、反馈、后台与无效页面设置 `noindex`。这些 HTML 页面不在 robots 中禁止抓取，以便搜索引擎读取 `noindex`。业务 API 设置 `X-Robots-Tag: noindex, nofollow`。
+- canonical 统一到 `https://youlang.cc.cd`，不包含详情追踪参数。缺失/下架/删除的详情和未知页面返回 HTTP 404，前端也显示对应提示。
+- Google 和 Bing 的所有权验证文件位于 `public/googled4ad848484c407b4.html`、`public/BingSiteAuth.xml`，Worker 原样提供，不能删改。静态资源配置 `html_handling = "none"` 保留 Google 的 `.html` 文件名，避免 Cloudflare 将验证网址重定向到无后缀地址。
+
+部署后完成以下平台操作（需要登录文件对应的平台账号）：
+
+1. 访问 `https://youlang.cc.cd/googled4ad848484c407b4.html` 和 `https://youlang.cc.cd/BingSiteAuth.xml`，确认可公开访问。
+2. 在 [Google Search Console](https://search.google.com/search-console) 选择 `https://youlang.cc.cd/` 的“网址前缀”资源，使用“HTML 文件”方式点击验证。HTML 文件不适用于需要 DNS 验证的“网域”资源。
+3. 在 [Bing Webmaster Tools](https://www.bing.com/webmasters/) 为 `https://youlang.cc.cd/` 选择“HTML 元标记 / HTML Meta Tag”验证并点击验证。首页 `<head>` 已添加 `msvalidate.01`，使用桌面 XML 文件中的同一验证码。XML 文件仍可使用且设置 `no-store`，但如果平台提示无法访问 XML，优先改用 HTML 元标记方式。
+4. 在两处平台的“站点地图 / Sitemaps”提交 `https://youlang.cc.cd/sitemap.xml`，并检查首页与游戏详情的抓取结果；Google 可使用“网址检查”请求编入索引。
+
+按用户要求不办理百度提交。验证文件部署成功不代表平台验证或收录已经完成；必须在平台账号中执行验证与 sitemap 提交。搜索引擎可能自行改写标题和摘要，基础 SEO 也不保证收录或排名。
+
+相关检查：`npm run build` 与 `npx playwright test tests/e2e/seo.spec.ts`。SEO 测试使用隔离的内存数据库，覆盖动态 sitemap、未发布内容排除、HTML 转义、验证文件、切页和迟到响应。
+
 ## 安全说明
 
 - 不要提交 `.env`、`.dev.vars`、Cloudflare 凭据或 R2 S3 访问密钥。

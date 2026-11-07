@@ -36,6 +36,8 @@
 - `src/composables/useAdminGames.ts`：后台列表请求取消、15 秒超时和过期响应隔离；组件内 LRU 最多缓存 6 页/60 条，30 秒过期，写入/删除/手动刷新使缓存失效，离开后台时释放。
 - `src/styles.css`：基础样式、动画和响应式规则；`src/styles/theme.css`：夜间语义颜色、Element Plus 变量、导航提示及主题按钮的手机适配。
 - `worker/src/index.ts`：公开 API、认证入口、反馈、会员工单、下载权限和全局中间件。
+- `src/utils/seo.ts` / `pageSeo.ts`：共用标题、简介提取、canonical 与收录规则，以及浏览器 head 更新。详情标题为“游戏名称｜游浪”，简介自动清理 Markdown 并截断至最多 160 个 Unicode 字符。
+- `worker/src/seo.ts`：初始 HTML head 改写、robots、动态 sitemap 索引与每 1000 个游戏一片的站点地图；缺失详情/未知页面返回 404，验证文件原样返回。正文仍为现有 Vue SPA，没有 SSR 改造。
 - `worker/src/admin.ts`：管理员专用 API；涉及后台 CRUD、审核或用户权限时优先查看。
 - `worker/src/media.ts`：管理员图片上传、文件大小/签名校验及公开图片读取；`MEDIA` 为 R2 绑定，线上图片域名使用 `MEDIA_PUBLIC_URL`，本地使用 `/api/media/`。
 - `src/components/MarkdownEditor.vue`、`MarkdownContent.vue`：介绍编辑、共享预览/详情渲染、图片上传与放大；`src/utils/markdown.ts` 处理安全渲染和旧文本转换，`imageUpload.ts` 处理浏览器压缩与上传，`src/styles/markdown.css` 适配手机和深色主题。
@@ -114,6 +116,16 @@ npm run deploy
 - 当前 `tests/e2e/` 共 16 个测试实例，覆盖基本业务流程、仅按名称搜索与组合筛选、路由过渡、筛选位置、详情异常状态、减少动态效果及后台会员到期和分类标签操作；后台测试以隔离数据执行真实用户列表处理函数，不改开发库中的管理员身份。完整鉴权矩阵与慢网络返回位置仍可补充验证。
 
 # AI 快速上手
+
+2026-11-07 用户随后确认 Bing 的 XML 访问恢复正常，Google 与 Bing 的验证均完成，两个平台均已提交 `https://youlang.cc.cd/sitemap.xml`，无需再次安排所有权验证或重复提交。本轮 Git 发布范围包含全部基础 SEO、Google/Bing 公开验证文件、Bing 首页验证标签、静态资源配置与测试文档。后续以站长平台的抓取/收录报告为依据处理问题；站点地图自动随已发布游戏更新，用户明确不办理百度。
+
+2026-11-07 用户反馈 Google 验证成功，但 Bing 平台提示无法访问 XML。复查正式域名的普通请求及 bingbot 标识请求，XML 均返回 200 且与桌面文件一致，robots 也未禁止 Bing；尚未确定 Bing 验证服务器失败的实际原因。当前 Wrangler OAuth 权限无法读取 Cloudflare 安全设置、Bot Management 或规则集，不能据此宣称排除了防护拦截。已在 `index.html` 的 SEO 标记区之外加入 `msvalidate.01`，验证码使用用户桌面 Bing XML 中的原值；Bing XML 路由去掉条件缓存请求头及 ETag/Last-Modified，并返回 no-store 和 XML UTF-8 类型，保持原始文件内容。README 已将 Bing 提交步骤改为优先选择“HTML 元标记 / HTML Meta Tag”验证。最终发布版本为 `9c47857e-0d67-47d5-8e96-a94ca85ae090`，类型检查/构建与 6 项桌面手机验证通过，线上确认首页 Bing 标签及 XML no-store 生效。Bing 平台是否验证成功仍需要用户在平台改选 HTML 元标记后点击验证确认。
+
+2026-11-07 基础 SEO 已完成并部署，最终 Worker 版本为 `d43b511c-5940-496e-9654-c9cebf823296`。沿用 Vue SPA，在 Worker 初始 HTML 与前端切页时同步更新独立标题、自动截断简介、canonical 和 robots。正式网址统一为 `https://youlang.cc.cd`；首页、无筛选游戏库/有效分页及已发布详情允许收录，搜索筛选、登录、个人中心、反馈、后台与无效页面设置 noindex，业务 API 设置 `X-Robots-Tag: noindex, nofollow`。未知页面改为 `NotFoundView.vue`，缺失/下架/删除详情返回 HTTP 404；HTML no-store 并移除共享 index 的缓存校验头，防止旧缓存导致标题复用。无需新增数据库迁移。
+
+`/robots.txt` 标注 `/sitemap.xml`，后者为 sitemap 索引；静态公开页面位于 `/sitemaps/pages.xml`，已发布且未删除游戏每 1000 个生成 `/sitemaps/games-N.xml`，lastmod 使用真实 updated_at，缓存最多 60 秒。从用户桌面复制的 `public/googled4ad848484c407b4.html` 和 `public/BingSiteAuth.xml` 已发布；`wrangler.toml` 新增 `html_handling = "none"`，保留 Google 验证文件的 .html 后缀，避免 Cloudflare 自动重定向。不得删改验证文件。用户明确跳过百度；Google/Bing 的平台账号验证和 sitemap 提交仍需在对应账号中完成，操作说明见 README 的“搜索引擎收录”，不能把验证文件上线当作平台验证或收录已完成。
+
+本次验证：最终生产构建含前后端类型检查通过；SEO 与原有 HTTPS 共 14 项桌面/手机检查通过，缓存条件请求补测 2 项、真实 Worker 验证文件与首页补测 2 项通过。线上无登录请求检查了首页、robots、sitemap、个人/后台 noindex、筛选页 noindex、未知页面/游戏 404、Google/Bing 验证文件原始字节和管理接口 401；sitemap 的两份子地图共 28 个公开网址。抽查 `phantom-blade-zero`、`no-man-sky` 初始 HTML 标题、160 字简介与 canonical 正确，Edge 线上详情/返回首页切页验证通过且无 JS 运行错误。此次通过 Wrangler 直接发布，未执行远程数据库写入、Git 提交或推送。
 
 2026-10-21 公告与游戏置顶已部署上线。已依次执行 `npm run db:migrate:remote`（成功应用 `0005_announcements_and_pinned_games.sql`）和 `npm run deploy`，再次查询确认远程无待执行迁移；发布构建含前后端类型检查通过。Cloudflare Worker 版本为 `9aa5fb1c-b958-4d37-9961-dc8380b335fe`。通过本机已配置代理验证 `https://youlang.cc.cd` 与 Workers 地址：首页、健康检查、游戏列表（包含布尔 `isPinned`）、公告列表/最新/自动弹窗查询及当前身份接口正常；未登录访问公告管理接口返回 401。两处站点首页 HTML 与新版后台 JS 的 SHA-256 均与本地构建一致。当前无已发布公告，需在后台创建并发布后才会自动展示。代码随本次部署推送至 `origin/main`（`chuanK6/game`）。
 

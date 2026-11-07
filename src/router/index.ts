@@ -2,11 +2,14 @@ import { ref } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { beginCatalogRender, cancelCatalogScroll, catalogPosition, waitForCatalogRender } from '@/utils/catalogNavigation'
+import { pageMetadata, SITE_ORIGIN } from '@/utils/seo'
+import { setPageMetadata } from '@/utils/pageSeo'
 
 export const navigationPending = ref(false)
 export const navigationError = ref('')
 let pendingRoute: RouteLocationNormalized | undefined
 let navigationVersion = 0
+let seoInitialized = false
 
 const router = createRouter({
   history: createWebHistory(),
@@ -38,7 +41,7 @@ const router = createRouter({
     { path: '/profile', name: 'profile', component: () => import('@/views/ProfileView.vue'), meta: { requiresAuth: true } },
     { path: '/feedback', name: 'feedback', component: () => import('@/views/FeedbackView.vue'), meta: { requiresAuth: true } },
     { path: '/admin', name: 'admin', component: () => import('@/views/AdminView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue') },
   ],
 })
 
@@ -68,8 +71,17 @@ router.beforeEach(async (to) => {
   if (to.name === 'auth' && auth.isLoggedIn) return { name: 'home' }
 })
 
-router.afterEach((to) => {
+router.afterEach((to, _from, failure) => {
   if (pendingRoute === to) navigationPending.value = false
+  if (!failure) {
+    const metadata = pageMetadata(to.path, new URL(to.fullPath, window.location.origin).searchParams)
+    // Preserve the server's game metadata during the first API load.
+    const serverCanonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href
+    const preserveInitialDetail = !seoInitialized && to.name === 'game-detail'
+      && serverCanonical === `${SITE_ORIGIN}${to.path}`
+    if (!preserveInitialDetail) setPageMetadata(metadata)
+    seoInitialized = true
+  }
 })
 
 router.onError((_error, to) => {

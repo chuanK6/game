@@ -7,6 +7,7 @@ import { clearSession, createSession, hashPassword, readSession, serializeUser, 
 import admin from './admin'
 import announcements from './announcements'
 import media from './media'
+import seo, { serveSeoPage } from './seo'
 import type { AppEnv } from './types'
 
 type GameRow = {
@@ -69,6 +70,7 @@ app.route('/media', media)
 app.use('*', async (context, next) => {
   // Authentication and account responses must never reuse a browser/proxy cache.
   context.header('Cache-Control', 'no-store')
+  context.header('X-Robots-Tag', 'noindex, nofollow')
   await next()
 })
 app.use('*', async (context, next) => {
@@ -452,8 +454,10 @@ site.use('*', async (context, next) => {
   if (production) context.header('Strict-Transport-Security', 'max-age=31536000')
 })
 site.route('/', app)
+site.route('/', seo)
 site.all('*', async context => {
   if (new URL(context.req.url).pathname.startsWith('/api/')) return context.notFound()
+  if (context.req.method === 'GET' || context.req.method === 'HEAD') return serveSeoPage(context)
   const response = await context.env.ASSETS.fetch(context.req.raw)
   return response
 })
