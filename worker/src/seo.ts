@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono'
-import { escapeHtml, gameMetadata, pageMetadata, SITE_ORIGIN, type SeoMetadata } from '../../src/utils/seo'
+import { escapeHtml, gameMetadata, normalizePagePath, pageMetadata, SITE_ORIGIN, unavailableGameMetadata, type SeoMetadata } from '../../src/utils/seo'
 import type { AppEnv } from './types'
 
 const seo = new Hono<AppEnv>()
@@ -35,7 +35,10 @@ function urlset(entries: string[]) {
 }
 
 seo.get('/robots.txt', context => context.text([
-  'User-agent: *', 'Allow: /', 'Disallow: /api/', '',
+  'User-agent: *', 'Allow: /', 'Disallow: /api/',
+  // Google needs the public data endpoints to render the Vue page body.
+  'Allow: /api/games', 'Allow: /api/game-filters', 'Allow: /api/categories', 'Allow: /api/tags',
+  'Disallow: /api/games/*/downloads', '',
   // Let crawlers read private/search pages to see their noindex directive.
   `Sitemap: ${SITE_ORIGIN}/sitemap.xml`, '',
 ].join('\n'), 200, { 'Cache-Control': 'public, max-age=300' }))
@@ -70,11 +73,11 @@ seo.get('/sitemaps/:file', async context => {
   })))
 })
 
-function metadataHtml(metadata: SeoMetadata) {
+function metadataHtml(metadata: SeoMetadata, path: string) {
   return [
     `<title>${escapeHtml(metadata.title)}</title>`,
     `<meta name="description" content="${escapeHtml(metadata.description)}" />`,
-    `<meta name="robots" content="${metadata.robots}" />`,
+    `<meta name="robots" content="${metadata.robots}" data-seo-path="${escapeHtml(path)}" />`,
     metadata.canonical ? `<link rel="canonical" href="${escapeHtml(metadata.canonical)}" />` : '',
   ].join('\n')
 }
@@ -82,6 +85,12 @@ function metadataHtml(metadata: SeoMetadata) {
 // Rewrite only head metadata; the existing Vue app continues to render the page body.
 export async function serveSeoPage(context: Context<AppEnv>) {
   const url = new URL(context.req.url)
+  const normalizedPath = normalizePagePath(url.pathname)
+  if (url.pathname !== normalizedPath
+    && (['/games', '/auth', '/profile', '/feedback', '/admin'].includes(normalizedPath) || /^\/games\/[^/]+$/.test(normalizedPath))) {
+    url.pathname = normalizedPath
+    return context.redirect(url.href, 308)
+  }
   let metadata = pageMetadata(url.pathname, url.searchParams)
   let status: 200 | 404 = 200
   const knownPage = ['/', '/games', '/auth', '/profile', '/feedback', '/admin'].includes(url.pathname)
@@ -91,7 +100,7 @@ export async function serveSeoPage(context: Context<AppEnv>) {
     try { slug = decodeURIComponent(detail[1]!) } catch { /* Invalid encodings are missing pages. */ }
     const game = slug ? await context.env.DB.prepare(`SELECT g.name, g.slug, g.description, g.description_format ${publishedGames} AND g.slug = ?`)
       .bind(slug).first<{ name: string; slug: string; description: string; description_format: 'plain' | 'markdown' }>() : null
-    if (!game) { status = 404; metadata.title = '游戏不可用｜游浪' }
+    if (!game) { status = 404; metadata = unavailableGameMetadata() }
     else metadata = gameMetadata({ ...game, descriptionFormat: game.description_format })
   } else if (!knownPage) status = 404
 
@@ -110,7 +119,7 @@ export async function serveSeoPage(context: Context<AppEnv>) {
   headers.set('X-Robots-Tag', metadata.robots)
   // These validators describe the unmodified static index, not the per-page head.
   for (const header of ['ETag', 'Last-Modified', 'Content-Length']) headers.delete(header)
-  const html = (await response.text()).replace(/<!--seo:start-->[\s\S]*?<!--seo:end-->/, () => metadataHtml(metadata))
+  const html = (await response.text()).replace(/<!--seo:start-->[\s\S]*?<!--seo:end-->/, () => metadataHtml(metadata, url.pathname))
   return new Response(html, { status, headers })
 }
 

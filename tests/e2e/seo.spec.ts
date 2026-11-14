@@ -70,7 +70,7 @@ test('首个 HTML 响应包含独立标题、纯文本简介与正式 canonical�
     const html = await response.text()
     expect(html).toContain('测试 &amp; 游戏 &lt;/title&gt;&lt;script&gt;window.seoInjected=true&lt;/script&gt;｜游浪</title>')
     expect(html).toContain('<link rel="canonical" href="https://youlang.cc.cd/games/seo-game-1" />')
-    expect(html).toContain('<meta name="robots" content="index, follow" />')
+    expect(html).toContain('<meta name="robots" content="index, follow"')
     expect(html).toContain('<meta name="msvalidate.01" content="D7B773EF012EE6DEFDAAF4518C4B3902" />')
     expect(html).not.toContain('https://private.example.com/')
     expect(html).not.toContain('<script>window.seoInjected')
@@ -96,6 +96,11 @@ test('robots 与分片 sitemap 只列公开游戏，更新或下架自动生效'
     const robots = await worker.request('/robots.txt', {}, data.bindings)
     expect(robots.headers.get('Content-Type')).toContain('text/plain')
     expect(await robots.text()).toContain('Sitemap: https://youlang.cc.cd/sitemap.xml')
+    const renderingRules = await worker.request('/robots.txt', {}, data.bindings)
+    const rules = await renderingRules.text()
+    for (const path of ['/api/games', '/api/game-filters', '/api/categories', '/api/tags']) expect(rules).toContain(`Allow: ${path}`)
+    expect(rules).toContain('Disallow: /api/')
+    expect(rules).toContain('Disallow: /api/games/*/downloads')
     const sitemap = await worker.request('/sitemap.xml', {}, data.bindings)
     expect(sitemap.headers.get('Content-Type')).toContain('application/xml')
     expect(await sitemap.text()).toContain('/sitemaps/games-2.xml')
@@ -123,7 +128,7 @@ test('个人后台、筛选搜索和无效页面不收录，静态资源及接�
       const response = await worker.request(path, {}, data.bindings)
       expect(response.status).toBe(200)
       expect(response.headers.get('X-Robots-Tag')).toBe('noindex, follow')
-      expect(await response.text()).toContain('<meta name="robots" content="noindex, follow" />')
+      expect(await response.text()).toContain('<meta name="robots" content="noindex, follow"')
     }
     for (const path of ['/games/secret-draft', '/games/offline-game', '/games/deleted-game', '/games/missing', '/missing-page']) {
       const response = await worker.request(path, {}, data.bindings)
@@ -141,6 +146,20 @@ test('个人后台、筛选搜索和无效页面不收录，静态资源及接�
     expect(api.status).toBe(200)
     expect(api.headers.get('X-Robots-Tag')).toBe('noindex, nofollow')
     expect(JSON.stringify(await api.json())).not.toContain('secret-download')
+  } finally { data.close() }
+})
+
+test('公开页面尾部斜杠跳转到规范网址，保留筛选参数且详情仍允许收录', async () => {
+  const data = fixture()
+  try {
+    for (const [path, target] of [['/games/', '/games'], ['/games/?page=2', '/games?page=2'], ['/games/seo-game-1/', '/games/seo-game-1']]) {
+      const response = await worker.request(`https://youlang.cc.cd${path}`, {}, data.bindings)
+      expect(response.status).toBe(308)
+      expect(response.headers.get('Location')).toBe(`https://youlang.cc.cd${target}`)
+      const normalized = await worker.request(response.headers.get('Location')!, {}, data.bindings)
+      expect(normalized.status).toBe(200)
+      expect(normalized.headers.get('X-Robots-Tag')).toBe('index, follow')
+    }
   } finally { data.close() }
 })
 
@@ -221,5 +240,60 @@ test('详情失败和迟到响应不会把旧游戏标题带到其他页面', as
     await expect(page).toHaveTitle('游戏不可用｜游浪')
     await expect(page.locator('head meta[name="robots"]')).toHaveAttribute('content', 'noindex, follow')
     await expect(page.locator('head link[rel="canonical"]')).toHaveCount(0)
+  } finally { release?.(); await page.unrouteAll({ behavior: 'wait' }).catch(() => {}); data.close() }
+})
+
+test('公开详情接口被阻止或暂时失败时保留服务端 index，只有确认404才设noindex', async ({ page }) => {
+  const data = fixture()
+  try {
+    await interceptApi(page, data)
+    await page.route('**/games/seo-game-1', async route => {
+      if (route.request().resourceType() !== 'document') return route.fallback()
+      const response = await worker.request(route.request().url(), {}, data.bindings)
+      await route.fulfill({ status: response.status, headers: Object.fromEntries(response.headers), body: await response.text() })
+    })
+    let failure: 'blocked' | 'server' | 'missing' = 'blocked'
+    await page.route('**/api/games/seo-game-1', async route => {
+      if (failure === 'blocked') return route.abort('blockedbyclient')
+      return route.fulfill({ status: failure === 'missing' ? 404 : 503,
+        json: { ok: false, error: { code: failure === 'missing' ? 'GAME_NOT_FOUND' : 'TEMPORARILY_UNAVAILABLE', message: '暂时无法加载' } } })
+    })
+    for (const mode of ['blocked', 'server'] as const) {
+      failure = mode
+      await page.goto('/games/seo-game-1')
+      await expect(page.locator('.detail-error')).toBeVisible()
+      await expect(page).toHaveTitle(`${hostileName}｜游浪`)
+      await expect(page.locator('head meta[name="robots"]')).toHaveAttribute('content', 'index, follow')
+      await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute('href', 'https://youlang.cc.cd/games/seo-game-1')
+    }
+    failure = 'missing'
+    await page.goto('/games/seo-game-1')
+    await expect(page.locator('.detail-error')).toBeVisible()
+    await expect(page.locator('head meta[name="robots"]')).toHaveAttribute('content', 'noindex, follow')
+  } finally { await page.unrouteAll({ behavior: 'wait' }).catch(() => {}); data.close() }
+})
+
+test('站内进入公开详情的加载阶段不产生noindex，真正缺失的页面保持服务端noindex', async ({ page }) => {
+  const data = fixture()
+  let release: (() => void) | undefined
+  try {
+    await interceptApi(page, data)
+    const gate = new Promise<void>(resolve => { release = resolve })
+    await page.route('**/api/games/seo-game-1', async route => { await gate; await route.fallback() })
+    await page.goto('/games')
+    await page.locator('.game-card').filter({ hasText: hostileName }).click()
+    await expect(page.locator('.detail-loading')).toBeVisible()
+    await expect(page.locator('head meta[name="robots"]')).toHaveAttribute('content', 'index, follow')
+    await expect(page.locator('head link[rel="canonical"]')).toHaveAttribute('href', 'https://youlang.cc.cd/games/seo-game-1')
+    release!()
+    await expect(page).toHaveTitle(`${hostileName}｜游浪`)
+    await page.route('**/games/missing', async route => {
+      if (route.request().resourceType() !== 'document') return route.fallback()
+      const response = await worker.request(route.request().url(), {}, data.bindings)
+      await route.fulfill({ status: response.status, headers: Object.fromEntries(response.headers), body: await response.text() })
+    })
+    await page.goto('/games/missing')
+    await expect(page.locator('head meta[name="robots"]')).toHaveAttribute('content', 'noindex, follow')
+    await expect(page.getByRole('heading', { name: '游戏不可用' })).toBeVisible()
   } finally { release?.(); await page.unrouteAll({ behavior: 'wait' }).catch(() => {}); data.close() }
 })

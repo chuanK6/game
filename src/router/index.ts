@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { beginCatalogRender, cancelCatalogScroll, catalogPosition, waitForCatalogRender } from '@/utils/catalogNavigation'
-import { pageMetadata, SITE_ORIGIN } from '@/utils/seo'
+import { normalizePagePath, pageMetadata } from '@/utils/seo'
 import { setPageMetadata } from '@/utils/pageSeo'
 
 export const navigationPending = ref(false)
@@ -76,9 +76,9 @@ router.afterEach((to, _from, failure) => {
   if (!failure) {
     const metadata = pageMetadata(to.path, new URL(to.fullPath, window.location.origin).searchParams)
     // Preserve the server's game metadata during the first API load.
-    const serverCanonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href
+    const serverPath = document.head.querySelector<HTMLMetaElement>('meta[name="robots"][data-seo-path]')?.dataset.seoPath
     const preserveInitialDetail = !seoInitialized && to.name === 'game-detail'
-      && serverCanonical === `${SITE_ORIGIN}${to.path}`
+      && serverPath === normalizePagePath(to.path)
     if (!preserveInitialDetail) setPageMetadata(metadata)
     seoInitialized = true
   }

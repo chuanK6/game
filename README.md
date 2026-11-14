@@ -117,11 +117,11 @@ npm run deploy
 
 - 继续使用现有 Vue SPA。Worker 只改写初始 HTML 的标题、简介、canonical 和 robots；游戏正文仍由 Vue 与 API 加载，并未改成 SSR。
 - 游戏详情标题自动使用“游戏名称｜游浪”。简介从介绍中提取纯文本，Markdown 标题、链接格式和图片被清理，空介绍使用站点简介；超出 160 个 Unicode 字符时截断并加省略号。无需在后台额外填写。
-- 前端成功切页时同步更新 SEO 信息；详情请求失败或已离开页面时不会把旧游戏信息留到其他页面。
+- 前端成功切页时同步更新 SEO 信息；公开详情加载中保持 index，第一次加载保留服务端已返回的完整 SEO。网络阻断、超时或 5xx 不会改成 noindex，仅详情 API 确认 404 时排除收录；已离开页面的迟到响应不会修改新页面信息。
 - `/robots.txt` 标注正式站点的 `/sitemap.xml`。站点地图使用索引，静态公开页在 `/sitemaps/pages.xml`，每 1000 个已发布且未删除游戏生成一个 `/sitemaps/games-N.xml`；不包含草稿、下架游戏、个人页面或下载链接。
 - sitemap 根据 D1 当前数据动态生成，响应缓存最多 60 秒；游戏的 `lastmod` 使用真实 `updated_at`，不是抓取时间。HTML 使用 `no-store`，避免不同页面共用旧标题。
-- 首页、无筛选游戏库、有效分页和已发布详情允许收录；搜索/筛选组合、登录、个人中心、反馈、后台与无效页面设置 `noindex`。这些 HTML 页面不在 robots 中禁止抓取，以便搜索引擎读取 `noindex`。业务 API 设置 `X-Robots-Tag: noindex, nofollow`。
-- canonical 统一到 `https://youlang.cc.cd`，不包含详情追踪参数。缺失/下架/删除的详情和未知页面返回 HTTP 404，前端也显示对应提示。
+- 首页、无筛选游戏库、有效分页和已发布详情允许收录；搜索/筛选组合、登录、个人中心、反馈、后台与无效页面设置 `noindex`。这些 HTML 页面不在 robots 中禁止抓取，以便搜索引擎读取 `noindex`。robots 允许 `/api/games`、`/api/game-filters`、`/api/categories`、`/api/tags`，以便 Google 渲染 Vue 正文，其余 API 和下载接口仍禁止抓取。业务 API 自身保持 `X-Robots-Tag: noindex, nofollow`，不会作为网页编入索引。
+- canonical 统一到 `https://youlang.cc.cd`，不包含详情追踪参数。公开路由的尾部斜杠以 308 归一化并保留查询参数。缺失/下架/删除的详情和未知页面返回 HTTP 404，前端也显示对应提示。
 - Google 和 Bing 的所有权验证文件位于 `public/googled4ad848484c407b4.html`、`public/BingSiteAuth.xml`，Worker 原样提供，不能删改。静态资源配置 `html_handling = "none"` 保留 Google 的 `.html` 文件名，避免 Cloudflare 将验证网址重定向到无后缀地址。
 
 部署后完成以下平台操作（需要登录文件对应的平台账号）：

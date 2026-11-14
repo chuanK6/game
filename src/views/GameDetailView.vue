@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import MarkdownContent from '@/components/MarkdownContent.vue'
 import { safeCatalogPath } from '@/utils/catalogQuery'
 import { withRequestTimeout } from '@/utils/requestTimeout'
-import { gameMetadata, pageMetadata } from '@/utils/seo'
+import { gameMetadata, unavailableGameMetadata } from '@/utils/seo'
 import { setPageMetadata } from '@/utils/pageSeo'
 
 const route = useRoute()
@@ -74,11 +74,10 @@ async function loadGame() {
     if (disposed || request.signal.aborted || detailRequest !== request) return
     game.value = null
     loadError.value = error instanceof ApiError ? error.message : '游戏详情加载失败。'
-    if (router.currentRoute.value.name === 'game-detail' && String(router.currentRoute.value.params.slug) === slug) {
-      const metadata = pageMetadata(route.path)
-      if (error instanceof ApiError && error.status === 404) metadata.title = '游戏不可用｜游浪'
-      setPageMetadata(metadata)
-    }
+    // Only a confirmed missing game should change the page to noindex.
+    // Network failures, timeouts and server errors keep the existing public metadata.
+    if (error instanceof ApiError && error.status === 404
+      && router.currentRoute.value.name === 'game-detail' && String(router.currentRoute.value.params.slug) === slug) setPageMetadata(unavailableGameMetadata())
   } finally {
     if (!disposed && detailRequest === request) loading.value = false
   }

@@ -117,6 +117,8 @@ npm run deploy
 
 # AI 快速上手
 
+2026-11-14 修复 Google 报告公开游戏详情“被 noindex 标记排除”。用户提供 `/games/007-first-light`，并说明 26 个详情受影响。线上初始 HTML 的 HTTP 头和 meta 都为 index，但已复现：阻止详情接口后，前端错误处理会将页面改为 noindex；原 robots 同时禁止整个 `/api/`，会阻碍 Google 渲染游戏正文。修复后公开详情的加载占位信息为 index，首次加载用 Worker 写入的 `data-seo-path` 保留当前页面完整服务端 SEO（包括真实 404 的 noindex），网络阻断/超时/5xx 不改变 index，只有详情 API 确认 404 才排除。robots 对公开游戏、筛选、分类、标签接口放行，其他 API 及下载接口仍禁抓，所有业务 API 本身继续 noindex；无新增数据库迁移。另将公开路由尾部斜杠以 308 归一化并保留查询参数，避免 `/games/` 或详情尾部斜杠被误作 noindex/404。类型检查、生产构建和全部 20 项桌面/手机 SEO 测试通过，涵盖阻断接口、503、加载阶段、真正缺失页面及尾部斜杠。Google 历史报告仍需重新实际网址测试/抓取后更新，不能仅凭代码修复声称已经收录。
+
 2026-11-07 用户随后确认 Bing 的 XML 访问恢复正常，Google 与 Bing 的验证均完成，两个平台均已提交 `https://youlang.cc.cd/sitemap.xml`，无需再次安排所有权验证或重复提交。本轮 Git 发布范围包含全部基础 SEO、Google/Bing 公开验证文件、Bing 首页验证标签、静态资源配置与测试文档。后续以站长平台的抓取/收录报告为依据处理问题；站点地图自动随已发布游戏更新，用户明确不办理百度。
 
 2026-11-07 用户反馈 Google 验证成功，但 Bing 平台提示无法访问 XML。复查正式域名的普通请求及 bingbot 标识请求，XML 均返回 200 且与桌面文件一致，robots 也未禁止 Bing；尚未确定 Bing 验证服务器失败的实际原因。当前 Wrangler OAuth 权限无法读取 Cloudflare 安全设置、Bot Management 或规则集，不能据此宣称排除了防护拦截。已在 `index.html` 的 SEO 标记区之外加入 `msvalidate.01`，验证码使用用户桌面 Bing XML 中的原值；Bing XML 路由去掉条件缓存请求头及 ETag/Last-Modified，并返回 no-store 和 XML UTF-8 类型，保持原始文件内容。README 已将 Bing 提交步骤改为优先选择“HTML 元标记 / HTML Meta Tag”验证。最终发布版本为 `9c47857e-0d67-47d5-8e96-a94ca85ae090`，类型检查/构建与 6 项桌面手机验证通过，线上确认首页 Bing 标签及 XML no-store 生效。Bing 平台是否验证成功仍需要用户在平台改选 HTML 元标记后点击验证确认。

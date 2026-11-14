@@ -43,7 +43,16 @@ export function gameMetadata(game: { name: string; slug: string; description: st
   }
 }
 
+export function normalizePagePath(path: string) {
+  return path.replace(/\/+$/, '') || '/'
+}
+
+export function unavailableGameMetadata(): SeoMetadata {
+  return { title: '游戏不可用｜游浪', description: HOME_DESCRIPTION, canonical: null, robots: 'noindex, follow' }
+}
+
 export function pageMetadata(path: string, query = new URLSearchParams()): SeoMetadata {
+  path = normalizePagePath(path)
   if (path === '/') return { title: HOME_TITLE, description: HOME_DESCRIPTION, canonical: `${SITE_ORIGIN}/`, robots: 'index, follow' }
   if (path === '/games') {
     const page = query.get('page') ?? '1'
@@ -58,11 +67,15 @@ export function pageMetadata(path: string, query = new URLSearchParams()): SeoMe
       robots: indexable ? 'index, follow' : 'noindex, follow',
     }
   }
+  if (/^\/games\/[^/]+$/.test(path)) {
+    // Loading is not evidence that a public page should be excluded from search.
+    return { title: '游戏详情｜游浪', description: HOME_DESCRIPTION, canonical: `${SITE_ORIGIN}${path}`, robots: 'index, follow' }
+  }
   const titles: Record<string, string> = {
     '/auth': '登录与注册｜游浪', '/profile': '个人中心｜游浪', '/feedback': '问题反馈｜游浪', '/admin': '管理后台｜游浪',
   }
   return {
-    title: titles[path] ?? (/^\/games\/[^/]+$/.test(path) ? '游戏详情｜游浪' : '页面不存在｜游浪'),
+    title: titles[path] ?? '页面不存在｜游浪',
     description: HOME_DESCRIPTION,
     canonical: null,
     robots: 'noindex, follow',
