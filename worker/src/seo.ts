@@ -34,6 +34,21 @@ function urlset(entries: string[]) {
   return `${XML_HEADER}<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${entries.join('')}</urlset>`
 }
 
+const pageEntries = [`<url><loc>${SITE_ORIGIN}/</loc></url>`, `<url><loc>${SITE_ORIGIN}/games</loc></url>`]
+
+async function gameEntries(database: D1Database, page: number) {
+  const result = await database.prepare(`SELECT g.slug, g.updated_at ${publishedGames} ORDER BY g.id ASC LIMIT ? OFFSET ?`)
+    .bind(SITEMAP_PAGE_SIZE, (page - 1) * SITEMAP_PAGE_SIZE).all<{ slug: string; updated_at: string }>()
+  return result.results.map(game => {
+    // SQLite CURRENT_TIMESTAMP is UTC; do not invent a fresh lastmod on every crawl.
+    const timestamp = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(game.updated_at)
+      ? `${game.updated_at.replace(' ', 'T')}Z` : game.updated_at
+    const date = new Date(timestamp)
+    const lastmod = Number.isNaN(date.getTime()) ? '' : `<lastmod>${date.toISOString()}</lastmod>`
+    return `<url><loc>${escapeHtml(`${SITE_ORIGIN}/games/${encodeURIComponent(game.slug)}`)}</loc>${lastmod}</url>`
+  })
+}
+
 seo.get('/robots.txt', context => context.text([
   'User-agent: *', 'Allow: /', 'Disallow: /api/',
   // Google needs the public data endpoints to render the Vue page body.
@@ -45,32 +60,34 @@ seo.get('/robots.txt', context => context.text([
 
 seo.get('/sitemap.xml', async context => {
   const count = await context.env.DB.prepare(`SELECT COUNT(*) AS total ${publishedGames}`).first<{ total: number }>()
-  const entries = [`<sitemap><loc>${SITE_ORIGIN}/sitemaps/pages.xml</loc></sitemap>`]
+  if ((count?.total ?? 0) <= SITEMAP_PAGE_SIZE) {
+    return xml(context, urlset([...pageEntries, ...await gameEntries(context.env.DB, 1)]))
+  }
+  // Keep every child map at the root so its URL scope includes /games/.
+  const entries = [`<sitemap><loc>${SITE_ORIGIN}/sitemap-pages.xml</loc></sitemap>`]
   for (let page = 1; page <= Math.ceil((count?.total ?? 0) / SITEMAP_PAGE_SIZE); page++) {
-    entries.push(`<sitemap><loc>${SITE_ORIGIN}/sitemaps/games-${page}.xml</loc></sitemap>`)
+    entries.push(`<sitemap><loc>${SITE_ORIGIN}/sitemap-games-${page}.xml</loc></sitemap>`)
   }
   return xml(context, `${XML_HEADER}<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${entries.join('')}</sitemapindex>`)
 })
 
-seo.get('/sitemaps/pages.xml', context => xml(context, urlset([
-  `<url><loc>${SITE_ORIGIN}/</loc></url>`, `<url><loc>${SITE_ORIGIN}/games</loc></url>`,
-])))
+seo.get('/sitemap-pages.xml', context => xml(context, urlset(pageEntries)))
 
-seo.get('/sitemaps/:file', async context => {
-  const match = /^games-([1-9]\d*)\.xml$/.exec(context.req.param('file'))
+seo.get('/:file', async (context, next) => {
+  const file = context.req.param('file')
+  if (!file.startsWith('sitemap-games-')) return next()
+  const match = /^sitemap-games-([1-9]\d*)\.xml$/.exec(file)
   const page = match ? Number(match[1]) : 0
   if (!page || !Number.isSafeInteger(page) || page > 100000) return xml(context, urlset([]), 404)
-  const result = await context.env.DB.prepare(`SELECT g.slug, g.updated_at ${publishedGames} ORDER BY g.id ASC LIMIT ? OFFSET ?`)
-    .bind(SITEMAP_PAGE_SIZE, (page - 1) * SITEMAP_PAGE_SIZE).all<{ slug: string; updated_at: string }>()
-  if (!result.results.length) return xml(context, urlset([]), 404)
-  return xml(context, urlset(result.results.map(game => {
-    // SQLite CURRENT_TIMESTAMP is UTC; do not invent a fresh lastmod on every crawl.
-    const timestamp = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(game.updated_at)
-      ? `${game.updated_at.replace(' ', 'T')}Z` : game.updated_at
-    const date = new Date(timestamp)
-    const lastmod = Number.isNaN(date.getTime()) ? '' : `<lastmod>${date.toISOString()}</lastmod>`
-    return `<url><loc>${escapeHtml(`${SITE_ORIGIN}/games/${encodeURIComponent(game.slug)}`)}</loc>${lastmod}</url>`
-  })))
+  const entries = await gameEntries(context.env.DB, page)
+  return xml(context, urlset(entries), entries.length ? 200 : 404)
+})
+
+// Previously submitted child-map URLs continue to resolve at a valid root URL.
+seo.get('/sitemaps/pages.xml', context => context.redirect('/sitemap-pages.xml', 308))
+seo.get('/sitemaps/:file', context => {
+  if (!/^games-[1-9]\d*\.xml$/.test(context.req.param('file'))) return xml(context, urlset([]), 404)
+  return context.redirect(`/sitemap-${context.req.param('file')}`, 308)
 })
 
 function metadataHtml(metadata: SeoMetadata, path: string) {

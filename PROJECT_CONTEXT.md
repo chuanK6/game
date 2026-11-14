@@ -117,6 +117,8 @@ npm run deploy
 
 # AI 快速上手
 
+2026-11-14 调整站点地图兼容性。用户反馈 Bing 对 `/sitemap.xml` 仅显示 2 个网址且详情无数据；线上主文件实际为列出 2 份子地图的 sitemapindex，子地图内容分别为 2 个公共页及 26 个游戏，均返回有效 XML/200，不能仅凭 Bing 的数字判断抓取失败。发现旧子地图位于 `/sitemaps/` 而其 URL 位于 `/`、`/games/`，不符合 sitemap 协议的目录范围建议（https://www.sitemaps.org/protocol.html#location）。现在不超过 1000 个游戏时，根目录 `/sitemap.xml` 直接提供完整 urlset；超过 1000 时切换索引，所有子地图改为根目录 `/sitemap-pages.xml`、`/sitemap-games-N.xml`，旧 `/sitemaps/` 地址 308 到新地址。Google 同时支持两种格式，提交地址和网页网址不变。生产构建与类型检查通过，22 项 SEO 用例中 21 项首轮通过；构建重建 dist 期间静态资源 watcher 错误造成一项失败，在构建完成后重启服务，真实静态资源桌面/手机 2 项补测均通过。Bing 需要重新处理原 sitemap 地址以更新统计，不能宣称后台已发现或收录全部网址。
+
 2026-11-14 修复 Google 报告公开游戏详情“被 noindex 标记排除”。用户提供 `/games/007-first-light`，并说明 26 个详情受影响。线上初始 HTML 的 HTTP 头和 meta 都为 index，但已复现：阻止详情接口后，前端错误处理会将页面改为 noindex；原 robots 同时禁止整个 `/api/`，会阻碍 Google 渲染游戏正文。修复后公开详情的加载占位信息为 index，首次加载用 Worker 写入的 `data-seo-path` 保留当前页面完整服务端 SEO（包括真实 404 的 noindex），网络阻断/超时/5xx 不改变 index，只有详情 API 确认 404 才排除。robots 对公开游戏、筛选、分类、标签接口放行，其他 API 及下载接口仍禁抓，所有业务 API 本身继续 noindex；无新增数据库迁移。另将公开路由尾部斜杠以 308 归一化并保留查询参数，避免 `/games/` 或详情尾部斜杠被误作 noindex/404。类型检查、生产构建和全部 20 项桌面/手机 SEO 测试通过，涵盖阻断接口、503、加载阶段、真正缺失页面及尾部斜杠。Google 历史报告仍需重新实际网址测试/抓取后更新，不能仅凭代码修复声称已经收录。
 
 2026-11-07 用户随后确认 Bing 的 XML 访问恢复正常，Google 与 Bing 的验证均完成，两个平台均已提交 `https://youlang.cc.cd/sitemap.xml`，无需再次安排所有权验证或重复提交。本轮 Git 发布范围包含全部基础 SEO、Google/Bing 公开验证文件、Bing 首页验证标签、静态资源配置与测试文档。后续以站长平台的抓取/收录报告为依据处理问题；站点地图自动随已发布游戏更新，用户明确不办理百度。
